@@ -1,0 +1,13 @@
+    id: 2,
+240:         title: '문제 2. [합리적 선택과 정의관 분석]',
+241:         questionText:
+242:           '【문제 2】 제시문 (마)의 합리적 선택의 의미를 설명하고, 이를 바탕으로 제시문 (바)의 두 가지 관점에서 제시문 (사)와 (아)에 나오는 갑과 을의 사례를 비교하여 논하시오. (800±100자)',
+243:         targetLength: '700자 ~ 900자 (800자 기준 ±100자)',
+244:         minChars: 700,
+245:         maxChars: 900,
+246:         recommendedTime: '60분',
+247:         points: 50,
+248:         facultyWeightNote: '경영대학, 경제학부 지원자에게는 문제 1의 2배(100점 만점 환산) 배점',
+249:         passages: [
+250:           {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
