@@ -1,5 +1,6 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
+import { AuthGate } from '@/components/AuthGate'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -41,7 +42,9 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body className="antialiased">
-        {children}
+        <AuthGate>
+          {children}
+        </AuthGate>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
