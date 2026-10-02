@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, ChevronRight, ClipboardList, Clock3, Copy, Download, FileText, GraduationCap, Lightbulb, Loader2, Menu, Play, RotateCcw, Send, Sparkles, TrendingUp, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { HONGIK_OVERVIEW, HONGIK_TRENDS, HONGIK_RUBRIC, HONGIK_ALL_EXAMS } from '@/data/hongik-data'
@@ -492,24 +492,14 @@ const HONGIK_2026_MOCK_DATA = {
   }
 }
 
-// 선택된 시험에 따라 해당 시험의 문항 및 제시문 데이터를 반환하는 헬퍼 함수
+// 선택된 시험에 따라 해당 시험의 문항 및 제시문 데이터를 반환하는 헬퍼 함수 (HONGIK_ALL_EXAMS 단일 소스 참조)
 function getQuestionsData(examId?: string) {
-  if (!examId || examId === 'hongik-2026-humanities-real') {
-    return QUESTIONS_DATA
-  }
-  if (examId === 'hongik-2027-humanities-mock') {
-    return HONGIK_2027_MOCK_DATA
-  }
-  if (examId === 'hongik-2026-humanities-01') {
-    return HONGIK_2026_MOCK_DATA
-  }
-  const foundExam = HONGIK_ALL_EXAMS.find((e) => e.id === examId)
-  if (!foundExam || !foundExam.questions || foundExam.questions.length === 0) {
-    return QUESTIONS_DATA
-  }
+  const targetId = examId || 'hongik-2026-humanities-real'
+  const foundExam = HONGIK_ALL_EXAMS.find((e) => e.id === targetId) || HONGIK_ALL_EXAMS[1]
 
   const q1Data = foundExam.questions[0]
-  const q2Data = foundExam.questions[1] || foundExam.questions[0]
+  const hasQ2 = (foundExam.questions && foundExam.questions.length > 1)
+  const q2Data = hasQ2 ? foundExam.questions[1] : foundExam.questions[0]
 
   return {
     q1: {
@@ -533,7 +523,7 @@ function getQuestionsData(examId?: string) {
       modalCallout: `💡 출제 핵심 포인트: ${q1Data.keyArguments?.slice(0, 2).join(' / ') || '핵심 논점 분석'}`,
       rubric: {
         facultyWeight: foundExam.targetFaculty,
-        totalScore: `${q1Data.points || 50}점 만점`,
+        totalScore: `${q1Data.points || 50}점 만점 (정밀채점 100점 환산)`,
         items: [
           {
             category: '채점 기준 등급별 평가 요소',
@@ -541,6 +531,14 @@ function getQuestionsData(examId?: string) {
               name: `[${sc.grade}등급 (${sc.range})]`,
               desc: sc.description,
               points: sc.range
+            }))
+          },
+          {
+            category: '출제위원 핵심 평가 논점 및 배점 가이드',
+            subItems: (q1Data.keyArguments || []).map((ka, idx) => ({
+              name: `핵심 평가 영역 ${idx + 1}`,
+              desc: ka,
+              points: ''
             }))
           }
         ],
@@ -571,7 +569,7 @@ function getQuestionsData(examId?: string) {
       modalCallout: `💡 출제 핵심 포인트: ${q2Data.keyArguments?.slice(0, 2).join(' / ') || '핵심 논점 분석'}`,
       rubric: {
         facultyWeight: foundExam.targetFaculty,
-        totalScore: `${q2Data.points || 50}점 만점`,
+        totalScore: `${q2Data.points || 50}점 만점 (정밀채점 100점 환산)`,
         items: [
           {
             category: '채점 기준 등급별 평가 요소',
@@ -579,6 +577,14 @@ function getQuestionsData(examId?: string) {
               name: `[${sc.grade}등급 (${sc.range})]`,
               desc: sc.description,
               points: sc.range
+            }))
+          },
+          {
+            category: '출제위원 핵심 평가 논점 및 배점 가이드',
+            subItems: (q2Data.keyArguments || []).map((ka, idx) => ({
+              name: `핵심 평가 영역 ${idx + 1}`,
+              desc: ka,
+              points: ''
             }))
           }
         ],
@@ -615,9 +621,13 @@ function ExamWorkspace({
   const [showModelModal, setShowModelModal] = useState(false)
   const [showRubricModal, setShowRubricModal] = useState(false)
 
-  // Gemini AI 정밀 채점 로딩 상태
+  // Gemini AI 정밀 채점 로딩 및 20초 지연 감지 상태
   const [isGrading, setIsGrading] = useState(false)
   const [gradingStep, setGradingStep] = useState(1)
+  const [isGradingDelayed, setIsGradingDelayed] = useState(false)
+  const [gradingNotice, setGradingNotice] = useState<string | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const delayTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const questionsData = getQuestionsData(selectedExamId)
   const currentQ = questionsData[activeQuestion]
@@ -625,6 +635,25 @@ function ExamWorkspace({
 
   const handleAnswerChange = (val: string) => {
     setAnswers((prev) => ({ ...prev, [activeQuestion]: val }))
+  }
+
+  // 사용자가 채점을 취소하고 답안으로 돌아가기를 눌렀을 때의 핸들러
+  const handleCancelGrading = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    if (delayTimerRef.current) {
+      clearTimeout(delayTimerRef.current)
+      delayTimerRef.current = null
+    }
+    setIsGrading(false)
+    setIsGradingDelayed(false)
+  }
+
+  // 사용자가 계속 기다리기를 눌렀을 때 안내 박스를 숨기고 대기 유지
+  const handleKeepWaiting = () => {
+    setIsGradingDelayed(false)
   }
 
   // Gemini API를 호출하여 공식 채점 기준표에 따라 실시간 채점을 수행하는 핸들러
@@ -637,6 +666,16 @@ function ExamWorkspace({
 
     setIsGrading(true)
     setGradingStep(1)
+    setIsGradingDelayed(false)
+
+    // 20초 이상 응답 지연 시 계속 기다리기/취소 선택 옵션 활성화
+    if (delayTimerRef.current) clearTimeout(delayTimerRef.current)
+    delayTimerRef.current = setTimeout(() => {
+      setIsGradingDelayed(true)
+    }, 20000)
+
+    const controller = new AbortController()
+    abortControllerRef.current = controller
 
     // 학생이 기다리는 동안 실시간 채점 진행 상태를 애니메이션으로 안내
     const t1 = setTimeout(() => setGradingStep(2), 2200)
@@ -646,6 +685,7 @@ function ExamWorkspace({
       const res = await fetch('/api/grade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           university: currentUniv,
           examTitle: currentQ.tag || `${currentUniv} 수시 논술`,
@@ -668,12 +708,26 @@ function ExamWorkspace({
       const reportData: GradingReportData = await res.json()
       onReport(reportData)
     } catch (err: any) {
-      console.error('AI 채점 오류:', err)
-      alert(`AI 채점 분석 중 오류가 발생했습니다:\n${err?.message || '잠시 후 다시 시도해 주세요.'}`)
+      if (err.name === 'AbortError') {
+        console.log('채점 요청이 사용자에 의해 안전하게 취소되었습니다.')
+        return
+      }
+      console.warn('AI 채점 일시 지연 발생 (팝업창 자동 종료):', err)
+      // 에러 alert창을 띄우지 않고, 작성 중이던 답안을 온전히 보존한 채 부드러운 인라인 안내 제공
+      setGradingNotice('현재 AI 채점 서버 이용량이 많아 일시 지연되었습니다. 작성하신 답안은 안전하게 보존되어 있으니 잠시 후 다시 제출해 주세요.')
+      setTimeout(() => {
+        setGradingNotice(null)
+      }, 6000)
     } finally {
       clearTimeout(t1)
       clearTimeout(t2)
+      if (delayTimerRef.current) {
+        clearTimeout(delayTimerRef.current)
+        delayTimerRef.current = null
+      }
+      abortControllerRef.current = null
       setIsGrading(false)
+      setIsGradingDelayed(false)
     }
   }
 
@@ -873,6 +927,12 @@ function ExamWorkspace({
           <span>{currentQ.label} 실전 답안 작성 중</span>
         </div>
         <div className="bottom-bar-actions">
+          {gradingNotice && (
+            <div className="grading-notice-banner">
+              <AlertTriangle className="grading-notice-icon" />
+              <span>{gradingNotice}</span>
+            </div>
+          )}
           <Button className="bottom-submit-btn" onClick={handleSubmitAndGrade} disabled={isGrading}>
             {isGrading ? <Loader2 className="animate-spin" size={16} /> : null}
             {isGrading ? 'AI 채점관 정밀 분석 진행 중...' : '답안 제출 후 정밀 채점 리포트 보기'} <ArrowRight data-icon="inline-end" />
@@ -1046,6 +1106,35 @@ function ExamWorkspace({
                 <span>3단계: 감점 요인 적발 및 1:1 합격자 수준 첨삭(Rewrite) 생성</span>
               </div>
             </div>
+
+            {/* 10초 이상 응답 지연 시 계속 기다리기 / 취소 선택 옵션 */}
+            {isGradingDelayed && (
+              <div className="grading-delay-box">
+                <div className="grading-delay-header">
+                  <Clock3 className="grading-delay-icon" />
+                  <span>분석량이 많아 심층 채점이 진행 중입니다</span>
+                </div>
+                <p className="grading-delay-desc">
+                  공식 채점 기준 대조 및 1:1 맞춤 첨삭문 생성에 시간이 조금 더 소요되고 있습니다. 계속 기다리시거나 취소 후 답안으로 돌아가실 수 있습니다.
+                </p>
+                <div className="grading-delay-actions">
+                  <button
+                    type="button"
+                    className="grading-btn-wait"
+                    onClick={handleKeepWaiting}
+                  >
+                    계속 기다리기
+                  </button>
+                  <button
+                    type="button"
+                    className="grading-btn-cancel"
+                    onClick={handleCancelGrading}
+                  >
+                    취소하고 답안으로 돌아가기
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1066,23 +1155,23 @@ function ReportPage({
   const [activeCriterion, setActiveCriterion] = useState(0)
   const [retryOpen, setRetryOpen] = useState(false)
 
-  // 채점 데이터 매핑 (API 응답이 있으면 실제 데이터, 없으면 기존 기본 예시 사용)
+  // 채점 데이터 매핑 (API 응답이 있으면 실제 데이터, 없으면 안내 기본값 사용)
   const isRealGrading = !!reportData
 
-  const examTitle = reportData?.examTitle || '2026학년도 홍익대학교 인문계열 (서울 오전) 문제 1 정밀 채점 리포트'
-  const studentMeta = `${reportData?.studentName || '김민준'} 학생 · 홍익대학교 인문계열 · 실전 AI 정밀 채점 결과`
-  const questionBadge = reportData?.questionLabel || '문제 1 (집중과 분산) · 최종 결과'
+  const examTitle = reportData?.examTitle || '논술패스 AI 정밀 채점 리포트'
+  const studentMeta = `${reportData?.studentName || '수험생'} 학생 · 실전 AI 정밀 채점 결과`
+  const questionBadge = reportData?.questionLabel || '문항 정밀 채점 리포트'
 
-  const totalScore = reportData?.totalScore ?? 78
+  const totalScore = reportData ? reportData.totalScore : 0
   const maxScore = reportData?.maxPossibleScore ?? 100
   const cutline = reportData?.cutlineScore ?? 82
   const scoreDiff = totalScore - cutline
-  const statusVerdict = reportData?.statusVerdict || (scoreDiff >= 0 ? '합격 안정권' : scoreDiff >= -5 ? '합격 가능권' : '도전 권장')
+  const statusVerdict = reportData?.statusVerdict || (totalScore === 0 ? '채점 대기' : scoreDiff >= 0 ? '합격 안정권' : scoreDiff >= -5 ? '합격 가능권' : '도전 권장')
 
-  const charCount = reportData?.charCount ?? 812
-  const charStatus = reportData?.charStatus || '통과 · 감점 0점'
-  const conceptHits = reportData?.conceptHits || { matchedCount: 4, targetTotal: 5, keywords: ['리바이어던', '원심력/구심력', '탈중앙화', '다원주의'] }
-  const structureGrade = reportData?.structureGrade || 'B+'
+  const charCount = reportData?.charCount ?? 0
+  const charStatus = reportData?.charStatus || '미제출'
+  const conceptHits = reportData?.conceptHits || { matchedCount: 0, targetTotal: 0, keywords: [] }
+  const structureGrade = reportData?.structureGrade || '-'
 
   // 평가 기준 목록
   const criteriaList = reportData?.criteria && reportData.criteria.length > 0
@@ -1524,11 +1613,14 @@ function HongikPage({
   onBack: () => void
   onStartExam: (univName?: string, examId?: string, questionId?: 'q1' | 'q2') => void
 }) {
-  const [filter, setFilter] = useState<'past' | 'mock'>('past')
+  const [filter, setFilter] = useState<'past' | 'mock' | 'expected'>('past')
+
+  const expectedCount = HONGIK_ALL_EXAMS.filter((e) => e.type === '예상문제').length
 
   const filteredExams = HONGIK_ALL_EXAMS.filter((item) => {
     if (filter === 'past') return item.type === '기출문제'
-    return item.type === '모의논술'
+    if (filter === 'mock') return item.type === '모의논술'
+    return item.type === '예상문제'
   })
 
   return (
@@ -1756,20 +1848,32 @@ function HongikPage({
           </div>
 
           <div className="exam-filter-row">
-            <div className="filter-tabs">
+            <div className="filter-tabs-group">
+              <div className="filter-tabs">
+                <button
+                  type="button"
+                  className={filter === 'past' ? 'active' : ''}
+                  onClick={() => setFilter('past')}
+                >
+                  기출문제 ({HONGIK_ALL_EXAMS.filter((e) => e.type === '기출문제').length})
+                </button>
+                <button
+                  type="button"
+                  className={filter === 'mock' ? 'active' : ''}
+                  onClick={() => setFilter('mock')}
+                >
+                  모의논술 ({HONGIK_ALL_EXAMS.filter((e) => e.type === '모의논술').length})
+                </button>
+              </div>
+
+              {/* 우측에 독립적으로 배치된 예상문제 버튼 */}
               <button
                 type="button"
-                className={filter === 'past' ? 'active' : ''}
-                onClick={() => setFilter('past')}
+                className={`filter-btn-expected ${filter === 'expected' ? 'active' : ''}`}
+                onClick={() => setFilter('expected')}
               >
-                기출문제 ({HONGIK_ALL_EXAMS.filter((e) => e.type === '기출문제').length})
-              </button>
-              <button
-                type="button"
-                className={filter === 'mock' ? 'active' : ''}
-                onClick={() => setFilter('mock')}
-              >
-                모의논술 ({HONGIK_ALL_EXAMS.filter((e) => e.type === '모의논술').length})
+                <Sparkles className="w-3.5 h-3.5" />
+                예상문제 ({expectedCount})
               </button>
             </div>
             <span className="text-xs text-slate-500 font-medium">
@@ -1778,31 +1882,42 @@ function HongikPage({
           </div>
 
           <div className="problem-list-container">
-            {filteredExams.map((exam) => (
-              <button
-                key={exam.id}
-                type="button"
-                className="problem-row"
-                onClick={() => onStartExam('홍익대학교', exam.id)}
-              >
-                <span className={`problem-type ${exam.type === '기출문제' ? 'type-past' : 'type-mock'}`}>
-                  {exam.type}
-                </span>
-                <span className="problem-main">
-                  <strong>{exam.title}</strong>
-                  <small>
-                    {exam.year} · {exam.targetFaculty} · {exam.totalTime}분 · {exam.totalLength}
-                  </small>
-                  <span className="summary-snippet">📌 {exam.summary}</span>
-                </span>
-                <div className="problem-side-meta">
-                  <span className="level">
-                    난이도 <b>{exam.level}</b>
+            {filteredExams.length === 0 ? (
+              <div className="problem-empty-state">
+                <Sparkles className="w-8 h-8 text-indigo-400 mb-2" />
+                <h4>등록된 {filter === 'expected' ? '실전 예상문제' : '문제'}가 아직 없습니다</h4>
+                <p>출제위원 AI 및 교수진의 최근 출제 경향을 반영한 실전 예상문제가 곧 리스트에 추가됩니다.</p>
+              </div>
+            ) : (
+              filteredExams.map((exam) => (
+                <button
+                  key={exam.id}
+                  type="button"
+                  className="problem-row"
+                  onClick={() => onStartExam('홍익대학교', exam.id)}
+                >
+                  <span className={`problem-type ${
+                    exam.type === '기출문제' ? 'type-past' :
+                    exam.type === '모의논술' ? 'type-mock' : 'type-expected'
+                  }`}>
+                    {exam.type}
                   </span>
-                  <ChevronRight className="w-4 h-4 problem-arrow" />
-                </div>
-              </button>
-            ))}
+                  <span className="problem-main">
+                    <strong>{exam.title}</strong>
+                    <small>
+                      {exam.year} · {exam.targetFaculty} · {exam.totalTime}분 · {exam.totalLength}
+                    </small>
+                    <span className="summary-snippet">📌 {exam.summary}</span>
+                  </span>
+                  <div className="problem-side-meta">
+                    <span className="level">
+                      난이도 <b>{exam.level}</b>
+                    </span>
+                    <ChevronRight className="w-4 h-4 problem-arrow" />
+                  </div>
+                </button>
+              ))
+            )}
           </div>
         </section>
       </div>
