@@ -6,6 +6,8 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 // 1. 기출문제 목록 조회 (GET)
 export async function GET(req: Request) {
   try {

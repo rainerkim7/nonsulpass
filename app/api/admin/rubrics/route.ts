@@ -6,6 +6,8 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 // 1. 배점 체계 및 루브릭 목록 조회 (GET)
 export async function GET(req: Request) {
   try {
