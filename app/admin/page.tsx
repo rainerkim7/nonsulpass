@@ -219,10 +219,10 @@ function AdminConsoleContent() {
             <Link
               href={`/?view=univ&univ=${selectedUniv}`}
               className="admin-btn-secondary"
-              title="메인 페이지로 이동하여 확인"
+              title={`${currentUnivName} 메인 분석 페이지로 바로 이동`}
             >
               <ArrowLeft size={14} />
-              메인 페이지로 이동
+              {currentUnivName} 메인 페이지로 이동
             </Link>
           </div>
         </div>
