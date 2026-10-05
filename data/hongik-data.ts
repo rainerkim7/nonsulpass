@@ -9,7 +9,7 @@ export * from './hongik-exams'
 // 홍익대학교 논술 기본 개요 및 모집단위별 배점 체계
 export const HONGIK_OVERVIEW = {
   university: '홍익대학교',
-  faculty: '인문계열 / 사범대학 / 예술학과 / 법학부 / 경제학부 / 경영대학 / 자율전공',
+  faculty: '인문계열 (공통)',
   examDuration: '120분 (문항당 60분 권장)',
   totalQuestions: '2문항 (문항당 독립 제시문 4~5개 구성: 1번 (가)~(라), 2번 (마)~(아))',
   charPerQuestion: '800±100자 (700자~900자 엄수, ±10% 이탈 시 단계별 감점)',
