@@ -73,23 +73,52 @@ export function normalizeQuestionsData(rawQuestions: any, examMeta?: any): Quest
     const map: any = {}
     rawQuestions.forEach((q: any, idx: number) => {
       const qKey = `q${idx + 1}`
-      const passages: QuestionPassage[] = (q.passages || []).map((p: any) => ({
-        badge: p.badge || p.title || p.id || `[제시문 ${idx + 1}]`,
-        paragraphs: Array.isArray(p.paragraphs)
-          ? p.paragraphs
-          : p.content
-          ? p.content.split('\n\n').filter(Boolean)
-          : []
-      }))
+      const passages: QuestionPassage[] = (q.passages || []).map((p: any, pIdx: number) => {
+        // 실제 시험지 원문 원칙: 임의의 요약 제목(title)은 절대 뱃지로 노출하지 않음
+        let badge = p.badge
+        if (!badge && p.id && typeof p.id === 'string' && (p.id.startsWith('[') || p.id.startsWith('제시문'))) {
+          badge = p.id.startsWith('[') ? `[제시문 ${p.id.replace(/[\[\]]/g, '')}]` : p.id
+        }
+        if (!badge) {
+          const hangulLabels = ['가', '나', '다', '라', '마', '바', '사', '아', '자', '차']
+          badge = `[제시문 ${hangulLabels[pIdx] || pIdx + 1}]`
+        }
+        return {
+          badge,
+          paragraphs: Array.isArray(p.paragraphs)
+            ? p.paragraphs
+            : p.content
+            ? p.content.split('\n\n').filter(Boolean)
+            : []
+        }
+      })
+
+      // 실제 시험지 원칙: 임의의 소제목(예: "[가치 있는 기록...]")을 제거하고 오직 시험지 고유 식별 번호만 유지
+      let rawLabel = q.label || ''
+      if (!rawLabel && q.title) {
+        rawLabel = q.title.split('.')[0].replace(/【|】/g, '').trim()
+      }
+      if (!rawLabel) rawLabel = `문제 ${idx + 1}`
+      const cleanLabel = rawLabel.replace(/\s*[\.·]?\s*\[.*?\]/g, '').trim()
+      const titleNumber = cleanLabel.startsWith('【') ? cleanLabel : `【${cleanLabel.replace(/문항/g, '문제')}】`
+
+      // 실제 출제 문제 발문 전문
+      let cleanNote = q.questionText || q.note || ''
+      if (!cleanNote && q.title) {
+        const parts = q.title.split(/【.*?】/)
+        if (parts.length > 1 && parts[1].trim()) {
+          cleanNote = parts[1].trim()
+        }
+      }
 
       map[qKey] = {
         id: qKey,
-        label: q.label || (q.title ? q.title.split('.')[0].trim() : `문항 ${idx + 1}`),
-        tag: q.tag || examMeta?.title || `${examMeta?.year || ''} 문항 ${idx + 1}`,
-        title: q.title || `【문항 ${idx + 1}】`,
-        note: q.note || q.questionText || '',
+        label: cleanLabel.replace(/【|】/g, '').trim(),
+        tag: q.tag || examMeta?.title || `${examMeta?.year || ''} ${cleanLabel}`,
+        title: titleNumber,
+        note: cleanNote,
         limit: q.limit || q.targetLength || '800±100자',
-        placeholder: q.placeholder || `여기에 ${q.label || `문항 ${idx + 1}`} 답안을 작성하세요.`,
+        placeholder: q.placeholder || `여기에 ${cleanLabel} 답안을 작성하세요.`,
         passages: passages,
         tipTitle: q.tipTitle || '출제위원 핵심 채점 팁',
         tipDesc: q.tipDesc || q.keyArguments?.join(' · ') || '제시문의 핵심 논점을 정확히 비교·분석하고 완결된 문장으로 서술하세요.',

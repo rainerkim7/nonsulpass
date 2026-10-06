@@ -262,12 +262,20 @@ export default function ExamWorkspace({
           </div>
           <div className="reading-scroll">
             <article className="prompt-card">
-              <div className="prompt-tag">{currentQ.tag}</div>
-              <div className="prompt-title-row">
-                <h2>{currentQ.title}</h2>
-                <span className="prompt-limit">{currentQ.limit}</span>
-              </div>
-              <p className="prompt-note">{currentQ.note}</p>
+              {(() => {
+                const rawTitle = currentQ.title || ''
+                const match = rawTitle.match(/^(【.*?】)(.*)/)
+                const header = match ? match[1].trim() : (rawTitle.startsWith('【') ? rawTitle : `【${currentQ.label || '문제 1'}】`)
+                const body = (match && match[2].trim()) ? match[2].trim() : (currentQ.note || '')
+                return (
+                  <>
+                    <div className="prompt-title-row">
+                      <h2>{header}</h2>
+                    </div>
+                    {body && <p className="prompt-body-text">{body}</p>}
+                  </>
+                )
+              })()}
             </article>
 
             {/* 실제 기출 제시문 목록 */}

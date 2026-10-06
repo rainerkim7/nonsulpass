@@ -328,7 +328,9 @@ export default function UniversityDetailPage({
               <div className="overview-cell">
                 <span className="overview-label">답안 분량</span>
                 <span className="overview-val">{overview.charPerQuestion}</span>
-                <span className="overview-sub">글자 수 규정 엄수 (감점 주의)</span>
+                <span className="overview-sub">
+                  글자 수 규정 엄수 <span className="overview-sub-warn">(감점 주의)</span>
+                </span>
               </div>
               <div className="overview-cell">
                 <span className="overview-label">제시문 구성</span>
@@ -452,30 +454,30 @@ export default function UniversityDetailPage({
                       <span className="trend-q-tag">{trend.questionNumber}</span>
                       <span className="trend-weight">{trend.examTime}</span>
                     </div>
-                    <h3 className="text-base font-bold text-slate-900 mb-0.5">{trend.questionType}</h3>
-                    <div className="text-[13px] text-blue-700 font-bold mb-3">
+                    <h3 className="text-[17.5px] font-extrabold text-slate-900 mb-1">{trend.questionType}</h3>
+                    <div className="text-[14px] text-blue-700 font-bold mb-3.5">
                       ⚖️ 배점 가중: {trend.scoreWeight}
                     </div>
 
                     {/* 1. 전형적 발문 출제 공식 (문제 형식) */}
-                    <div className="mb-3 p-3 bg-blue-50/70 border border-blue-200/70 rounded-lg">
-                      <span className="text-[13px] font-bold text-blue-900 block mb-1.5">
+                    <div className="mb-3.5 p-3.5 bg-blue-50/70 border border-blue-200/70 rounded-lg">
+                      <span className="text-[14px] font-bold text-blue-900 block mb-2">
                         📋 전형적 문제 출제 공식 (발문 형식):
                       </span>
-                      <p className="text-[13.5px] text-blue-950 font-medium leading-relaxed bg-white p-2.5 rounded border border-blue-100/80">
+                      <p className="text-[14.5px] text-blue-950 font-medium leading-[1.7] bg-white p-3 rounded-lg border border-blue-100/80">
                         {trend.questionTemplate}
                       </p>
                     </div>
 
                     {/* 2. 제시문 구성 체계 */}
-                    <div className="mb-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5">
-                      <span className="text-[13px] font-bold text-slate-800 block">
+                    <div className="mb-3.5 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                      <span className="text-[14px] font-bold text-slate-900 block">
                         🧩 제시문 구성 체계:
                       </span>
-                      <p className="text-[13px] text-slate-700 leading-relaxed pl-2.5 border-l-2 border-blue-500">
+                      <p className="text-[14px] text-slate-800 font-medium leading-relaxed pl-3 border-l-2 border-blue-500">
                         {trend.passageStructure?.base || ''}
                       </p>
-                      <p className="text-[13px] text-slate-700 leading-relaxed pl-2.5 border-l-2 border-amber-500">
+                      <p className="text-[14px] text-slate-800 font-medium leading-relaxed pl-3 border-l-2 border-amber-500">
                         {trend.passageStructure?.targets || ''}
                       </p>
                     </div>
@@ -484,31 +486,31 @@ export default function UniversityDetailPage({
                     <p className="trend-desc">{trend.description}</p>
 
                     {/* 4. 고득점 3단계 작성 공식 */}
-                    <div className="my-3">
-                      <span className="text-[13px] font-bold text-slate-900 block mb-2">
+                    <div className="my-3.5">
+                      <span className="text-[14px] font-bold text-slate-900 block mb-2.5">
                         ✍️ 고득점 3단계 작성 공식 & 분량 가이드:
                       </span>
-                      <div className="space-y-1.5">
+                      <div className="space-y-2">
                         {(trend.writingFormula || []).map((f: any, fIdx: number) => (
-                          <div key={fIdx} className="p-2.5 bg-white border border-slate-200 rounded-md shadow-xs">
-                            <div className="flex items-center justify-between text-[13px] mb-1">
+                          <div key={fIdx} className="p-3 bg-white border border-slate-200 rounded-md shadow-xs">
+                            <div className="flex items-center justify-between text-[14px] mb-1.5">
                               <strong className="text-blue-700 font-bold">{f.step}: {f.title}</strong>
-                              <span className="text-[11.5px] text-slate-600 font-semibold bg-slate-100 px-2 py-0.5 rounded">{f.charGuide}</span>
+                              <span className="text-[12.5px] text-slate-700 font-bold bg-slate-100 px-2.5 py-0.5 rounded">{f.charGuide}</span>
                             </div>
-                            <p className="text-[13px] text-slate-600 leading-relaxed">{f.desc}</p>
+                            <p className="text-[14px] text-slate-700 font-medium leading-relaxed">{f.desc}</p>
                           </div>
                         ))}
                       </div>
                     </div>
 
                     {/* 빈출 주제 키워드 */}
-                    <div className="mt-3 pt-3 border-t border-slate-100">
-                      <span className="text-[12.5px] font-bold text-slate-600 block mb-1.5">
+                    <div className="mt-3.5 pt-3.5 border-t border-slate-100">
+                      <span className="text-[13.5px] font-bold text-slate-700 block mb-2">
                         💡 대표 빈출 핵심 개념:
                       </span>
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap gap-2">
                         {(trend.frequentThemes || []).map((theme: any, tIdx: number) => (
-                          <span key={tIdx} className="text-[12px] bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full font-medium">
+                          <span key={tIdx} className="text-[13px] bg-slate-100 text-slate-800 px-3 py-1 rounded-full font-semibold">
                             #{theme}
                           </span>
                         ))}

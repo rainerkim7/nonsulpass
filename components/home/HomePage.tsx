@@ -17,7 +17,6 @@ import {
   FileText,
   Lightbulb
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import Brand from '@/components/common/Brand'
 import { SEOUL_UNIVERSITIES } from '@/lib/constants/universities'
 
@@ -50,9 +49,6 @@ export default function HomePage({
             관리자 콘솔
           </Link>
           <button className="home-login">로그인</button>
-          <Button size="sm" onClick={() => onExam()}>
-            무료로 시작하기 <ArrowRight data-icon="inline-end" />
-          </Button>
         </div>
       </header>
 
@@ -72,20 +68,12 @@ export default function HomePage({
             <br />
             개인별 평가 지도까지 한 곳에서 경험하세요.
           </p>
-          <div className="hero-actions">
-            <Button size="lg" onClick={() => onExam()}>
-              논술 문제 풀어보기 <ArrowRight data-icon="inline-end" />
-            </Button>
-            <button className="hero-text-button" onClick={onReport}>
-              평가 리포트 미리보기 <ArrowRight />
-            </button>
-          </div>
           <div className="hero-proof">
             <span>
               <Check /> 18개 대학 출제 경향
             </span>
             <span>
-              <Check /> 현직 강사진 평가 기준
+              <Check /> 정밀 AI 분석 채점 평가
             </span>
             <span>
               <Check /> 나만의 성장 리포트
@@ -159,7 +147,7 @@ export default function HomePage({
                   <span className={`univ-icon ${isReady ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}>
                     <GraduationCap />
                   </span>
-                  <span className={`univ-name ${isReady ? 'font-bold text-blue-950' : 'text-slate-500'}`}>
+                  <span className={`univ-name ${isReady ? 'font-bold text-blue-950' : 'text-slate-700 font-semibold'}`}>
                     {univ.name}
                   </span>
                 </div>
@@ -168,7 +156,7 @@ export default function HomePage({
                     <ArrowRight />
                   </span>
                 ) : (
-                  <span className="text-[11px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                  <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded">
                     준비중
                   </span>
                 )}
