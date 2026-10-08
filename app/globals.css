@@ -253,11 +253,11 @@
 @media (max-width:560px) { .brand-subtitle,.select-wrap { display:none; }.topbar .brand-name { font-size:15px; }.prompt-card { padding:18px 16px; }.prompt-tag { font-size:13px; }.prompt-title-row { display:block; }.prompt-card h2 { font-size:17px; line-height:1.5; margin-top:6px; }.prompt-limit { display:inline-block; margin-top:6px; font-size:12px; }.prompt-note { font-size:14px; line-height:1.7; margin-top:8px; }.passage-card { padding:18px 16px; }.passage-body p { font-size:14.5px; line-height:1.8; margin-bottom:14px; }.editor-heading { flex-direction:column; align-items:flex-start; gap:10px; }.editor-top-actions { align-items:flex-start; width:100%; }.editor-counts { justify-content:flex-start; }.editor-wrap { min-height:380px; }.editor-wrap textarea { min-height:380px; padding:16px 16px; font-size:15px; }.score-main { display:block; }.score-ring { margin-bottom:20px; }.kpi-grid { grid-template-columns:1fr; }.kpi-card { padding:12px 0; }.report-heading h1 { font-size:22px; }.report-nav .nav-slash,.report-nav strong { display:none; } }
 
 /* ========================================================
-   태블릿(갤럭시 탭 10~11인치, 아이패드 등) 전용 가독성 및 여백 최적화
-   적용 범위: 뷰포트 너비 601px ~ 1280px
+   태블릿(갤럭시 탭, 아이패드 등) 전용 가독성 및 여백 최적화
+   적용 범위: 뷰포트 너비 601px ~ 1180px
    전체적인 디자인 틀과 레이아웃은 유지하되 태블릿 시청 거리에 맞춰 폰트 및 여백 보정
    ======================================================== */
-@media (min-width: 601px) and (max-width: 1280px) {
+@media (min-width: 601px) and (max-width: 1180px) {
   /* 1. 홈 화면 & 네비게이션 폰트 스케일링 */
   .home-nav a { font-size: 15px; }
   .home-login { font-size: 14.5px; }
@@ -312,11 +312,6 @@
   /* 4. 대학별 상세 안내 및 출제 경향 카드 가독성 보정 */
   .univ-block-head p { font-size: 15.5px; }
   .trend-desc { font-size: 15.5px; line-height: 1.75; }
-  .trend-template-text { font-size: 15.5px !important; line-height: 1.8 !important; }
-  .trend-passage-item { font-size: 15px !important; line-height: 1.75 !important; }
-  .trend-formula-title { font-size: 15.5px !important; }
-  .trend-formula-desc { font-size: 15.5px !important; line-height: 1.75 !important; }
-  .trend-char-guide { font-size: 13.5px !important; }
   .scoring-card-sub { font-size: 15.5px; }
   .univ-back-btn { font-size: 13px; padding: 9px 15px; }
 }
