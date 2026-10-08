@@ -249,7 +249,73 @@
 .bottom-submit-btn:hover { background:#2c4987!important; transform:translateY(-1px)!important; box-shadow:0 6px 18px rgba(32, 54, 101, 0.3)!important; }
 @media (max-width:760px) { .bottom-bar { flex-direction:column; align-items:stretch; gap:10px; padding:12px 18px; } .bottom-submit-btn { width:100%; justify-content:center; } }.report-shell { padding-bottom:60px; }.report-container { max-width:1180px; margin:0 auto; padding:45px 4vw; }.report-heading { display:flex; justify-content:space-between; align-items:flex-end; gap:25px; }.report-heading h1 { margin:0; color:#25385f; font-size:28px; letter-spacing:-1.3px; }.report-meta { color:#929cab; font-size:11px; }.report-badge { padding:10px 13px; border:1px solid #dfe5ed; border-radius:8px; background:#fff; color:#71809a; font-size:10px; }.report-badge svg { width:14px; vertical-align:middle; margin-right:6px; }.score-hero { display:flex; justify-content:space-between; gap:35px; margin-top:30px; padding:30px; border:1px solid #dfe5ed; border-radius:12px; background:#fff; }.score-main { display:flex; align-items:center; gap:24px; }.score-ring { display:grid; place-items:center; width:130px; height:130px; border-radius:50%; background:conic-gradient(#5e80bd 78%,#e7ebf2 0); }.score-ring:before { content:''; position:absolute; width:98px; height:98px; border-radius:50%; background:#fff; }.score-ring div { position:relative; text-align:center; }.score-ring strong { display:block; color:#31518a; font-size:39px; }.score-ring span { color:#9ba5b4; font-size:10px; }.score-copy h2 { margin:0; color:#385992; font-size:21px; }.score-copy p { color:#7e8b9f; font-size:11px; }.negative { color:#bb7d7d; }.score-copy small { color:#a1aab7; font-size:10px; }.kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; min-width:410px; }.kpi-card { padding:16px; border-left:1px solid #e8ebf0; }.kpi-card span { display:block; color:#8d98a9; font-size:10px; }.kpi-card strong { display:block; margin:12px 0 9px; color:#314c80; font-size:24px; }.kpi-card strong span { display:inline; font-size:11px; }.kpi-card b { display:flex; align-items:center; gap:4px; font-size:9px; font-weight:600; }.kpi-card svg { width:12px; }.kpi-good { color:#719a7b; }.kpi-blue { color:#7188b4; }.report-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }.report-card { padding:27px; border:1px solid #dfe5ed; border-radius:11px; background:#fff; }.report-card h2 { margin:0; color:#2b3d60; font-size:17px; }.muted-label { color:#a4acb9; font-size:10px; }.rubric-tabs { display:flex; flex-direction:column; gap:7px; margin-top:22px; }.rubric-tabs button { display:grid; grid-template-columns:35px 1fr auto; align-items:center; gap:10px; padding:12px; border:1px solid #e9edf2; border-radius:7px; background:#fff; color:#718096; text-align:left; font-size:10px; }.rubric-tabs button.active { border-color:#9aafd3; background:#f1f5fb; color:#385992; }.rubric-tabs span { color:#a8b1bf; font-family:monospace; }.rubric-tabs strong { color:#4f6fa9; }.report-nav button { color:#536b9a; }.report-nav .nav-link { border:0; background:transparent; font-size:11px; }.report-nav .nav-slash { color:#c3cad5; }.report-nav strong { color:#354e80; font-size:11px; }
 @media (max-width:900px) { .topbar,.report-topbar { padding:0 18px; }.topbar-controls { gap:7px; }.timer,.mode-toggle,.context-bar .exam-status { display:none; }.submit-button { padding:8px!important; font-size:0!important; }.submit-button svg { margin:0!important; }.workspace { display:block; }.splitter { display:none; }.reading-panel,.writing-panel { padding:27px 18px; }.writing-panel { border-top:1px solid #e3e7ee; }.report-container { padding:30px 18px; }.report-heading,.score-hero { display:block; }.report-badge { display:inline-block; margin-top:17px; }.kpi-grid { min-width:0; margin-top:25px; }.kpi-card { border-left:0; border-top:1px solid #e8ebf0; }.report-grid { grid-template-columns:1fr; }.mobile-menu { display:block; }.home-topbar { padding:0 18px; } }
+
 @media (max-width:560px) { .brand-subtitle,.select-wrap { display:none; }.topbar .brand-name { font-size:15px; }.prompt-card { padding:18px 16px; }.prompt-tag { font-size:13px; }.prompt-title-row { display:block; }.prompt-card h2 { font-size:17px; line-height:1.5; margin-top:6px; }.prompt-limit { display:inline-block; margin-top:6px; font-size:12px; }.prompt-note { font-size:14px; line-height:1.7; margin-top:8px; }.passage-card { padding:18px 16px; }.passage-body p { font-size:14.5px; line-height:1.8; margin-bottom:14px; }.editor-heading { flex-direction:column; align-items:flex-start; gap:10px; }.editor-top-actions { align-items:flex-start; width:100%; }.editor-counts { justify-content:flex-start; }.editor-wrap { min-height:380px; }.editor-wrap textarea { min-height:380px; padding:16px 16px; font-size:15px; }.score-main { display:block; }.score-ring { margin-bottom:20px; }.kpi-grid { grid-template-columns:1fr; }.kpi-card { padding:12px 0; }.report-heading h1 { font-size:22px; }.report-nav .nav-slash,.report-nav strong { display:none; } }
+
+/* ========================================================
+   태블릿(갤럭시 탭, 아이패드 등) 전용 가독성 및 여백 최적화
+   적용 범위: 뷰포트 너비 601px ~ 1180px
+   전체적인 디자인 틀과 레이아웃은 유지하되 태블릿 시청 거리에 맞춰 폰트 및 여백 보정
+   ======================================================== */
+@media (min-width: 601px) and (max-width: 1180px) {
+  /* 1. 홈 화면 & 네비게이션 폰트 스케일링 */
+  .home-nav a { font-size: 15px; }
+  .home-login { font-size: 14.5px; }
+  .hero-description { font-size: 16.5px; line-height: 1.8; }
+  .hero-proof { font-size: 14.5px; }
+  .univ-title { font-size: 23px; }
+  .univ-subtitle { font-size: 15px; }
+  .univ-btn { padding: 13px 15px; }
+  .univ-name { font-size: 15px; }
+  .section-intro h2 { font-size: 30px; }
+  .section-intro > p:last-child { font-size: 16px; }
+  .service-card p { font-size: 15px; line-height: 1.75; }
+  .service-card h3 { font-size: 19.5px; }
+
+  /* 2. 논술 모의고사 시험장 (지문 / 문제 / 에디터) 가독성 극대화 */
+  .passage-body p { 
+    font-size: 16px; 
+    line-height: 1.9; 
+    letter-spacing: -0.2px; 
+  }
+  .prompt-card h2 { 
+    font-size: 19.5px; 
+    line-height: 1.6; 
+  }
+  .prompt-note, .prompt-body-text { 
+    font-size: 15.5px; 
+    line-height: 1.85; 
+  }
+  .editor-wrap textarea { 
+    font-size: 16px; 
+    line-height: 1.9; 
+    padding: 22px 24px;
+  }
+  .model-modal-text p {
+    font-size: 15.5px;
+    line-height: 1.9;
+  }
+  .writing-tip strong { font-size: 15px; }
+  .writing-tip p { font-size: 14.5px; line-height: 1.75; }
+  
+  /* 3. 채점 기준표 및 분석 리포트 가독성 보정 */
+  .rubric-table { font-size: 13.5px; line-height: 1.65; }
+  .rubric-table th { font-size: 13px; padding: 12px 14px; }
+  .rubric-table td { padding: 12px 14px; }
+  .rubric-faculty-badge { font-size: 13.5px; }
+  .rubric-deduction-card ul { font-size: 13px; line-height: 1.8; }
+  
+  .report-heading h1 { font-size: 26px; }
+  .report-card h2 { font-size: 18px; }
+  .rubric-tabs button { font-size: 11px; padding: 13px; }
+
+  /* 4. 대학별 상세 안내 및 출제 경향 카드 가독성 보정 */
+  .univ-block-head p { font-size: 15.5px; }
+  .trend-desc { font-size: 15.5px; line-height: 1.75; }
+  .scoring-card-sub { font-size: 15.5px; }
+  .univ-back-btn { font-size: 13px; padding: 9px 15px; }
+}
+
 
 /* ========================================================
    홍익대학교 논술 전용 상세 페이지 스타일
