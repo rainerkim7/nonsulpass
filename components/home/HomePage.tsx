@@ -73,7 +73,7 @@ export default function HomePage({
               <Check /> 18개 대학 출제 경향
             </span>
             <span>
-              <Check /> 정밀 AI 분석 채점 평가
+              <Check /> 현직 강사진 평가 기준
             </span>
             <span>
               <Check /> 나만의 성장 리포트
