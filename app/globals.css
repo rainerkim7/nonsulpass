@@ -257,6 +257,14 @@
   .topbar-controls { gap: 10px; }
   .editor-wrap { min-height: 420px; }
   .editor-wrap textarea { min-height: 420px; font-size: 15.5px; }
+
+  /* [태블릿 제시문 & 문제 폰트 가독성 확대] */
+  .prompt-card { padding: 26px 24px !important; }
+  .prompt-card h2 { font-size: 20px !important; }
+  .prompt-note, .prompt-body-text { font-size: 16.5px !important; line-height: 1.88 !important; }
+  .passage-card { padding: 24px 26px !important; }
+  .passage-badge { font-size: 14.5px !important; }
+  .passage-body p { font-size: 16.5px !important; line-height: 1.92 !important; font-weight: 450 !important; }
 }
 
 @media (max-width:900px) { .topbar,.report-topbar { padding:0 18px; }.topbar-controls { gap:7px; }.timer,.mode-toggle,.context-bar .exam-status { display:none; }.submit-button { padding:8px!important; font-size:0!important; }.submit-button svg { margin:0!important; }.workspace { display:block; }.splitter { display:none; }.reading-panel,.writing-panel { padding:27px 18px; }.writing-panel { border-top:1px solid #e3e7ee; }.report-container { padding:30px 18px; }.report-heading,.score-hero { display:block; }.report-badge { display:inline-block; margin-top:17px; }.kpi-grid { min-width:0; margin-top:25px; }.kpi-card { border-left:0; border-top:1px solid #e8ebf0; }.report-grid { grid-template-columns:1fr; }.mobile-menu { display:block; }.home-topbar { padding:0 18px; } }
