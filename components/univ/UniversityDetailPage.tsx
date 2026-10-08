@@ -464,7 +464,7 @@ export default function UniversityDetailPage({
                       <span className="text-[14px] font-bold text-blue-900 block mb-2">
                         📋 전형적 문제 출제 공식 (발문 형식):
                       </span>
-                      <p className="text-[14.5px] text-blue-950 font-medium leading-[1.7] bg-white p-3 rounded-lg border border-blue-100/80">
+                      <p className="trend-template-text text-[14.5px] text-blue-950 font-medium leading-[1.7] bg-white p-3 rounded-lg border border-blue-100/80">
                         {trend.questionTemplate}
                       </p>
                     </div>
@@ -474,10 +474,10 @@ export default function UniversityDetailPage({
                       <span className="text-[14px] font-bold text-slate-900 block">
                         🧩 제시문 구성 체계:
                       </span>
-                      <p className="text-[14px] text-slate-800 font-medium leading-relaxed pl-3 border-l-2 border-blue-500">
+                      <p className="trend-passage-item text-[14px] text-slate-800 font-medium leading-relaxed pl-3 border-l-2 border-blue-500">
                         {trend.passageStructure?.base || ''}
                       </p>
-                      <p className="text-[14px] text-slate-800 font-medium leading-relaxed pl-3 border-l-2 border-amber-500">
+                      <p className="trend-passage-item text-[14px] text-slate-800 font-medium leading-relaxed pl-3 border-l-2 border-amber-500">
                         {trend.passageStructure?.targets || ''}
                       </p>
                     </div>
@@ -494,10 +494,10 @@ export default function UniversityDetailPage({
                         {(trend.writingFormula || []).map((f: any, fIdx: number) => (
                           <div key={fIdx} className="p-3 bg-white border border-slate-200 rounded-md shadow-xs">
                             <div className="flex items-center justify-between text-[14px] mb-1.5">
-                              <strong className="text-blue-700 font-bold">{f.step}: {f.title}</strong>
-                              <span className="text-[12.5px] text-slate-700 font-bold bg-slate-100 px-2.5 py-0.5 rounded">{f.charGuide}</span>
+                              <strong className="trend-formula-title text-blue-700 font-bold">{f.step}: {f.title}</strong>
+                              <span className="trend-char-guide text-[12.5px] text-slate-700 font-bold bg-slate-100 px-2.5 py-0.5 rounded">{f.charGuide}</span>
                             </div>
-                            <p className="text-[14px] text-slate-700 font-medium leading-relaxed">{f.desc}</p>
+                            <p className="trend-formula-desc text-[14px] text-slate-700 font-medium leading-relaxed">{f.desc}</p>
                           </div>
                         ))}
                       </div>
