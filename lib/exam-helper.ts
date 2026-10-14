@@ -5,7 +5,7 @@
 
 import { supabase } from '@/lib/supabase'
 import { HONGIK_ALL_EXAMS } from '@/data/hongik-data'
-import { KHU_2027_MOCK_EXAM, KHU_2027_MOCK_SOCIAL_EXAM } from '@/data/khu-data'
+import { KHU_2027_MOCK_EXAM, KHU_2027_MOCK_SOCIAL_EXAM, KHU_2026_REAL_SOCIAL_EXAM } from '@/data/khu-data'
 import { DONGGUK_2027_MOCK_EXAM } from '@/data/dongguk-data'
 
 export interface QuestionPassage {
@@ -48,6 +48,8 @@ export interface QuestionData {
   modalLength: string
   modalCallout: string
   rubric: QuestionRubric
+  pdfUrl?: string
+  pdfName?: string
 }
 
 export interface QuestionsMap {
@@ -65,6 +67,16 @@ export function normalizeQuestionsData(rawQuestions: any, examMeta?: any): Quest
 
   // 1. 이미 { q1: {...}, q2: {...} } 형태인 경우
   if (rawQuestions.q1 && rawQuestions.q1.passages) {
+    if (examMeta?.pdf_url || examMeta?.pdfUrl) {
+      const pUrl = examMeta?.pdf_url || examMeta?.pdfUrl || ''
+      const pName = examMeta?.pdf_name || examMeta?.pdfName || ''
+      Object.keys(rawQuestions).forEach(k => {
+        if (rawQuestions[k]) {
+          if (!rawQuestions[k].pdfUrl) rawQuestions[k].pdfUrl = pUrl
+          if (!rawQuestions[k].pdfName) rawQuestions[k].pdfName = pName
+        }
+      })
+    }
     return rawQuestions as QuestionsMap
   }
 
@@ -88,7 +100,7 @@ export function normalizeQuestionsData(rawQuestions: any, examMeta?: any): Quest
           paragraphs: Array.isArray(p.paragraphs)
             ? p.paragraphs
             : p.content
-            ? p.content.split('\n\n').filter(Boolean)
+            ? p.content.split(/\r?\n\r?\n/).map((s: string) => s.trim()).filter(Boolean)
             : []
         }
       })
@@ -127,26 +139,53 @@ export function normalizeQuestionsData(rawQuestions: any, examMeta?: any): Quest
         modalPill: q.modalPill || `${examMeta?.year || ''} 문항 ${idx + 1}`,
         modalLength: q.modalLength || `${q.targetLength || q.limit || '800자 내외'} 충족`,
         modalCallout: q.modalCallout || `💡 출제 핵심 포인트: ${q.keyArguments?.slice(0, 2).join(' / ') || '핵심 논점 분석'}`,
-        rubric: q.rubric || {
-          facultyWeight: examMeta?.targetFaculty || examMeta?.target_faculty || '인문계열',
-          totalScore: `${q.points || q.score || 50}점 만점 (정밀채점 100점 환산)`,
-          items: q.scoringCriteria
-            ? [
+        // rubric 지능형 매핑: q.rubric -> q.scoringCriteria -> 로컬 프리셋 fallback
+        rubric: (() => {
+          if (q.rubric && Array.isArray(q.rubric.items) && q.rubric.items.length > 0) {
+            return q.rubric
+          }
+          if (Array.isArray(q.scoringCriteria) && q.scoringCriteria.length > 0) {
+            return {
+              facultyWeight: examMeta?.targetFaculty || examMeta?.target_faculty || '인문·사회계열',
+              totalScore: `${q.points || q.score || 50}점 만점 (정밀채점 100점 환산)`,
+              items: [
                 {
                   category: '채점 기준 등급별 평가 요소',
-                  subItems: (q.scoringCriteria || []).map((sc: any) => ({
+                  subItems: q.scoringCriteria.map((sc: any) => ({
                     name: `[${sc.grade}등급 (${sc.range})]`,
                     desc: sc.description,
                     points: sc.range
                   }))
                 }
+              ],
+              deductions: [
+                '지정 글자 수(±10% 범위) 미달 또는 초과 시 감점',
+                '제시문 문장을 그대로 복사하거나 핵심 논점을 오독한 경우 감점'
               ]
-            : [],
-          deductions: [
-            '지정 글자 수(±10% 범위) 미달 또는 초과 시 감점',
-            '제시문 문장을 그대로 복사하거나 핵심 논점을 오독한 경우 감점'
-          ]
-        }
+            }
+          }
+          // 로컬 프리셋에 정의된 공식 채점표가 있다면 연결 (경희대 2026 사회계열 등)
+          try {
+            const fallbackMap = getQuestionsData(examMeta?.id)
+            const fallbackQ = fallbackMap?.[qKey]
+            if (fallbackQ?.rubric?.items && fallbackQ.rubric.items.length > 0) {
+              return fallbackQ.rubric
+            }
+          } catch (e) {
+            // fallback 무시
+          }
+          return {
+            facultyWeight: examMeta?.targetFaculty || examMeta?.target_faculty || '인문·사회계열',
+            totalScore: `${q.points || q.score || 50}점 만점 (정밀채점 100점 환산)`,
+            items: [],
+            deductions: [
+              '지정 글자 수(±10% 범위) 미달 또는 초과 시 감점',
+              '제시문 문장을 그대로 복사하거나 핵심 논점을 오독한 경우 감점'
+            ]
+          }
+        })(),
+        pdfUrl: q.pdfUrl || q.pdf_url || examMeta?.pdf_url || examMeta?.pdfUrl || '',
+        pdfName: q.pdfName || q.pdf_name || examMeta?.pdf_name || examMeta?.pdfName || ''
       }
     })
     return map as QuestionsMap
@@ -190,6 +229,9 @@ export function getQuestionsData(examId?: string): QuestionsMap {
 
   // 2. 경희대학교 시험인 경우 경희대 전용 문항/제시문 데이터셋 반환 (사회계열 vs 인문체육계열 분기)
   if (targetId.startsWith('khu') || targetId.includes('khu')) {
+    if (targetId.includes('2026') && (targetId.includes('social') || targetId.includes('사회'))) {
+      return KHU_2026_REAL_SOCIAL_EXAM.questions as unknown as QuestionsMap
+    }
     if (targetId.includes('social') || targetId.includes('사회')) {
       return KHU_2027_MOCK_SOCIAL_EXAM.questions as unknown as QuestionsMap
     }

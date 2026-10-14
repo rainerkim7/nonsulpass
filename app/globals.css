@@ -232,6 +232,105 @@
 .editor-wrap textarea::-webkit-scrollbar-thumb { background:#e2e8f0; border-radius:9999px; }
 .editor-wrap textarea::-webkit-scrollbar-thumb:hover { background:#cbd5e1; }
 .editor-wrap textarea::placeholder { color:#94a3b8; font-size:14px; line-height:1.8; }
+
+/* ▦ 원고지 모드 전용 토글 및 에디터 스타일 */
+.manuscript-toggle-bar {
+  display: inline-flex;
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 3px;
+  gap: 3px;
+}
+.manuscript-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.manuscript-toggle-btn:hover {
+  color: #1e293b;
+}
+.manuscript-toggle-btn.active {
+  background: #ffffff;
+  color: #166534;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.manuscript-toggle-btn.mode-standard.active {
+  color: #1d4ed8;
+}
+
+/* 원고지 활성화 컨테이너 */
+.editor-wrap.manuscript-mode {
+  background-color: #fbf9f4 !important;
+  border: 1.5px solid #86efac !important;
+  box-shadow: 0 4px 20px rgba(22, 101, 52, 0.06) !important;
+}
+.editor-wrap.manuscript-mode:focus-within {
+  border-color: #16a34a !important;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15) !important;
+}
+
+/* 원고지 상단 규격 안내 헤더 */
+.manuscript-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px;
+  background: #f0fdf4;
+  border-bottom: 1px dashed #bbf7d0;
+  font-size: 12px;
+  color: #166534;
+  font-weight: 700;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 원고지 격자 배경 및 고정폭 글꼴 적용 textarea */
+.editor-wrap.manuscript-mode textarea {
+  background-color: #fbf9f4 !important;
+  background-image: 
+    /* 한 칸 너비 32px 세로선 */
+    repeating-linear-gradient(
+      to right,
+      rgba(22, 101, 52, 0.28) 0px,
+      rgba(22, 101, 52, 0.28) 1px,
+      transparent 1px,
+      transparent 32px
+    ),
+    /* 각 줄 상하선 및 줄간격(높이 42px = 글자 32px + 여백 10px) */
+    repeating-linear-gradient(
+      to bottom,
+      rgba(22, 101, 52, 0.28) 0px,
+      rgba(22, 101, 52, 0.28) 1px,
+      transparent 1px,
+      transparent 32px,
+      rgba(22, 101, 52, 0.28) 32px,
+      rgba(22, 101, 52, 0.28) 33px,
+      transparent 33px,
+      transparent 42px
+    ) !important;
+  background-size: 640px 42px !important;
+  background-position: 24px 24px !important;
+  background-repeat: repeat-y !important;
+  font-family: 'D2Coding', 'NanumGothicCoding', 'Courier New', monospace !important;
+  font-size: 17px !important;
+  line-height: 42px !important;
+  letter-spacing: 12px !important;
+  color: #0f172a !important;
+  caret-color: #15803d !important;
+  overflow-x: auto !important;
+}
 .editor-footer { display:flex; justify-content:space-between; align-items:center; padding-top:14px; }
 .save-state { display:flex; align-items:center; gap:6px; color:#15803d; font-size:12px; font-weight:600; }
 .save-state svg { width:14px; }

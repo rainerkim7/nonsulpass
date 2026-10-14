@@ -19,6 +19,7 @@ import {
   BookOpen
 } from 'lucide-react'
 import Brand from '@/components/common/Brand'
+import { useAuth } from '@/components/AuthGate'
 import { HONGIK_OVERVIEW, HONGIK_ALL_EXAMS, HONGIK_TRENDS, HONGIK_RUBRIC } from '@/data/hongik-data'
 import { KHU_OVERVIEW, KHU_ALL_EXAMS } from '@/data/khu-data'
 import { DONGGUK_OVERVIEW, DONGGUK_ALL_EXAMS, DONGGUK_TRENDS, DONGGUK_RUBRIC } from '@/data/dongguk-data'
@@ -44,6 +45,9 @@ export default function UniversityDetailPage({
   onBack,
   onStartExam,
 }: UniversityDetailPageProps) {
+  // 관리자 권한 확인 (admin 계정으로 로그인 시 true)
+  const { isAdmin } = useAuth()
+
   const [activeTab, setActiveTab] = useState<'exams' | 'trends' | 'rubric'>('exams')
   const [filter, setFilter] = useState<'past' | 'mock' | 'expected'>('past')
 
@@ -215,14 +219,17 @@ export default function UniversityDetailPage({
       <header className="univ-detail-nav">
         <Brand onHome={onBack} />
         <div className="flex items-center gap-3">
-          <Link
-            href={`/admin?univ=${univId}`}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-lg transition"
-            title={`${overview.university} 관리자 콘솔로 이동`}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            관리자 콘솔
-          </Link>
+          {/* 관리자(admin) 계정으로 로그인한 경우에만 관리자 콘솔 이동 버튼 노출 */}
+          {isAdmin && (
+            <Link
+              href={`/admin?univ=${univId}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-lg transition"
+              title={`${overview.university} 관리자 콘솔로 이동`}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              관리자 콘솔
+            </Link>
+          )}
           <button type="button" className="univ-back-btn" onClick={onBack}>
             <ArrowLeft /> 메인 화면으로 돌아가기
           </button>

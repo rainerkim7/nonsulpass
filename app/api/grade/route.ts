@@ -23,6 +23,8 @@ export async function POST(req: Request) {
       modelAnswer = '',
       studentAnswer = '',
       studentName = '수험생',
+      customSystemPrompt = '',
+      customUserPrompt = '',
     } = body
 
     if (!studentAnswer || studentAnswer.trim().length < 30) {
@@ -130,6 +132,14 @@ ${modelAnswer || '제시문과 발문의 논리적 일치 여부로 판단'}
     let rawResponseText = ''
     let lastError: any = null
 
+    const finalSystemPrompt = customSystemPrompt && customSystemPrompt.trim()
+      ? customSystemPrompt.trim()
+      : systemPrompt
+
+    const finalUserPrompt = customUserPrompt && customUserPrompt.trim()
+      ? customUserPrompt.trim()
+      : userPrompt
+
     for (const model of modelsToTry) {
       // 각 모델당 최대 2회 시도: 503(과부하) 또는 429(속도제한) 발생 시 0.8초 대기 후 즉시 1회 자동 재시도
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -141,7 +151,7 @@ ${modelAnswer || '제시문과 발문의 논리적 일치 여부로 판단'}
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 contents: [
-                  { role: 'user', parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }
+                  { role: 'user', parts: [{ text: `${finalSystemPrompt}\n\n${finalUserPrompt}` }] }
                 ],
                 generationConfig: {
                   temperature: 0.2, // 엄밀하고 일관된 채점을 위해 낮은 온도 설정

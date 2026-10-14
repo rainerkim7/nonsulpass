@@ -79,14 +79,26 @@ export async function POST(req: Request) {
         examPayload.questions = tab1_exam.questions
       }
 
+      // 문제지 원본 PDF 첨부 경로 및 원본 파일명 저장 지원
+      if (tab1_exam.pdf_url) {
+        examPayload.pdf_url = tab1_exam.pdf_url
+      }
+      if (tab1_exam.pdf_name) {
+        examPayload.pdf_name = tab1_exam.pdf_name
+      }
+
       let { error: examErr } = await supabase
         .from('exams')
         .upsert(examPayload)
 
-      // questions 컬럼이 아직 DB에 생성되지 않은 경우를 대비한 안전한 Fallback
-      if (examErr && examErr.message?.includes('questions')) {
-        console.warn('[Save All Tabs] questions 컬럼 미존재 감지, 기본 메타데이터만 1차 저장합니다.')
-        delete examPayload.questions
+      // questions 또는 pdf_url 컬럼이 아직 DB에 생성되지 않은 경우를 대비한 안전한 Fallback
+      if (examErr && (examErr.message?.includes('questions') || examErr.message?.includes('pdf_url') || examErr.message?.includes('pdf_name'))) {
+        console.warn('[Save All Tabs] questions 또는 pdf_url 컬럼 미존재 감지, 기본 메타데이터만 1차 저장합니다.')
+        if (examErr.message?.includes('questions')) delete examPayload.questions
+        if (examErr.message?.includes('pdf_url') || examErr.message?.includes('pdf_name')) {
+          delete examPayload.pdf_url
+          delete examPayload.pdf_name
+        }
         const retry = await supabase.from('exams').upsert(examPayload)
         examErr = retry.error
       }

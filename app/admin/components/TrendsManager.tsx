@@ -5,7 +5,7 @@
  * @description 관리자 페이지 - 탭 2 출제 경향 및 유형 분석(university_trends) 조회/수정/삭제/신규등록 컴포넌트
  */
 
-import React, { useState } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   Layers,
   Plus,
@@ -19,6 +19,7 @@ import {
   Tag,
   ListPlus
 } from 'lucide-react'
+import { UNIVERSITY_EXAM_TRACKS } from '@/lib/constants/universities'
 
 export interface TrendRow {
   id?: string
@@ -59,6 +60,44 @@ export default function TrendsManager({
   onRefresh,
   showNotice
 }: TrendsManagerProps) {
+  // =========================================================================
+  // 계열별 필터 상태 및 대학별 출제 계열 목록 추출
+  // =========================================================================
+  const availableFaculties = useMemo(() => {
+    if (UNIVERSITY_EXAM_TRACKS[univId]) {
+      return UNIVERSITY_EXAM_TRACKS[univId]
+    }
+    const set = new Set<string>()
+    trends.forEach((t: any) => {
+      const fac = t.passage_structure?.faculty || t.passageStructure?.faculty || t.faculty
+      if (fac) set.add(fac)
+      const match = t.question_number?.match(/^\[(.*?)\]/)
+      if (match && match[1]) set.add(match[1])
+    })
+    return Array.from(set)
+  }, [univId, trends])
+
+  const [facultyFilter, setFacultyFilter] = useState<string>('all')
+
+  useEffect(() => {
+    setFacultyFilter('all')
+  }, [univId])
+
+  // 선택된 계열 기준 필터링된 출제 경향 목록
+  const filteredTrends = useMemo(() => {
+    if (facultyFilter === 'all') return trends
+    return trends.filter((t: any) => {
+      const fac = t.passage_structure?.faculty || t.passageStructure?.faculty || t.faculty
+      if (fac && (fac === facultyFilter || fac.includes(facultyFilter) || facultyFilter.includes(fac))) {
+        return true
+      }
+      if (t.question_number && t.question_number.includes(facultyFilter)) {
+        return true
+      }
+      return false
+    })
+  }, [trends, facultyFilter])
+
   // 모달 상태
   const [modalOpen, setModalOpen] = useState<boolean>(false)
   const [isEditing, setIsEditing] = useState<boolean>(false)
@@ -87,7 +126,8 @@ export default function TrendsManager({
   const handleOpenAdd = () => {
     setIsEditing(false)
     setCurrentId(undefined)
-    setQuestionNumber(`문항 ${trends.length + 1}`)
+    const prefix = facultyFilter !== 'all' ? `[${facultyFilter}] ` : ''
+    setQuestionNumber(`${prefix}문항 ${filteredTrends.length + 1}`)
     setQuestionType('')
     setExamTime('권장 40분')
     setScoreWeight('30점 / 총 100점')
@@ -258,6 +298,61 @@ export default function TrendsManager({
         </div>
       </div>
 
+      {/* 계열 필터 탭 (단일/복수 계열 모두 대응, 복수 계열 시 직관적 탭 제공) */}
+      {availableFaculties.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '4px 0' }}>
+          <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#475569', marginRight: '4px' }}>
+            🎯 계열 필터:
+          </span>
+          <button
+            type="button"
+            onClick={() => setFacultyFilter('all')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '8px',
+              fontSize: '12.5px',
+              fontWeight: facultyFilter === 'all' ? 800 : 600,
+              border: `1px solid ${facultyFilter === 'all' ? '#1e3a8a' : '#cbd5e1'}`,
+              backgroundColor: facultyFilter === 'all' ? '#1e3a8a' : '#ffffff',
+              color: facultyFilter === 'all' ? '#ffffff' : '#475569',
+              cursor: 'pointer',
+              transition: 'all 0.15s'
+            }}
+          >
+            전체 ({trends.length})
+          </button>
+          {availableFaculties.map((fac) => {
+            const count = trends.filter((t: any) => {
+              const f = t.passage_structure?.faculty || t.passageStructure?.faculty || t.faculty
+              if (f && (f === fac || f.includes(fac) || fac.includes(f))) return true
+              if (t.question_number && t.question_number.includes(fac)) return true
+              return false
+            }).length
+            const isSelected = facultyFilter === fac
+            return (
+              <button
+                key={fac}
+                type="button"
+                onClick={() => setFacultyFilter(fac)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '8px',
+                  fontSize: '12.5px',
+                  fontWeight: isSelected ? 800 : 600,
+                  border: `1px solid ${isSelected ? '#1e3a8a' : '#cbd5e1'}`,
+                  backgroundColor: isSelected ? '#1e3a8a' : '#ffffff',
+                  color: isSelected ? '#ffffff' : '#475569',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+              >
+                {fac} ({count})
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* 로딩 / 빈 상태 / 카드 목록 */}
       {isLoading ? (
         <div className="admin-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '180px' }}>
@@ -285,9 +380,28 @@ export default function TrendsManager({
             첫 번째 문항 출제 경향 추가
           </button>
         </div>
+      ) : filteredTrends.length === 0 ? (
+        <div className="admin-card" style={{ textAlign: 'center', padding: '48px 20px' }}>
+          <BookOpen size={36} style={{ color: '#cbd5e1', margin: '0 auto 10px' }} />
+          <p style={{ fontSize: '15px', fontWeight: 700, color: '#334155', margin: 0 }}>
+            선택하신 [{facultyFilter}]에 등록된 출제 경향 데이터가 없습니다.
+          </p>
+          <p style={{ fontSize: '13px', color: '#94a3b8', margin: '6px 0 16px' }}>
+            우측 상단의 '+ 새 출제 경향 등록'을 눌러 해당 계열의 문항을 등록해보세요.
+          </p>
+          <button
+            type="button"
+            onClick={handleOpenAdd}
+            className="admin-btn-primary"
+            style={{ margin: '0 auto' }}
+          >
+            <Plus size={15} />
+            [{facultyFilter}] 문항 추가하기
+          </button>
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {trends.map((trend, idx) => (
+          {filteredTrends.map((trend, idx) => (
             <div
               key={trend.id || idx}
               style={{

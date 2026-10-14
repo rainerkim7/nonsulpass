@@ -5,7 +5,7 @@
 
 export interface Passage {
   id: string
-  title: string
+  title?: string
   content: string
   source: string
 }

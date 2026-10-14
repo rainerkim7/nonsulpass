@@ -157,7 +157,7 @@ function MainContent() {
   return (
     <HomePage
       onExam={handleStartExam}
-      onReport={() => updateUrlAndState('report')}
+      onReport={(report) => handleNavigateToReport(report)}
       onSelectUniv={handleSelectUniv}
     />
   )

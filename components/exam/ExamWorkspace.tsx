@@ -20,17 +20,175 @@ import {
   X,
   Copy,
   Sparkles,
-  BookOpen
+  BookOpen,
+  Edit3,
+  Save,
+  Plus,
+  Trash2,
+  Image as ImageIcon,
+  UploadCloud,
+  CheckCircle2,
+  ShieldCheck,
+  ChevronUp,
+  ChevronDown,
+  FileUp,
+  RefreshCw
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Brand from '@/components/common/Brand'
+import { useAuth } from '@/components/AuthGate'
+import { supabase } from '@/lib/supabase'
 import { getQuestionsData, fetchExamQuestionsFromDb, QuestionsMap } from '@/lib/exam-helper'
 import type { GradingReportData } from '@/types/grading'
+import ManuscriptModal from './ManuscriptModal'
+import ExamInlineEditor from './admin/ExamInlineEditor'
+import PromptInspectorModal from './PromptInspectorModal'
+import { Terminal } from 'lucide-react'
+
+/**
+ * 제시문 및 모범답안 단락 포맷팅 렌더러
+ * - 마크다운 이미지 `![alt](url)` 감지 시 고해상도 반응형 이미지 카드로 렌더링
+ * - 수학 수식/조건식 블록 전용 스타일 적용
+ */
+function renderFormattedParagraph(para: string, key: React.Key) {
+  if (!para) return null
+  const trimmed = para.trim()
+  if (!trimmed) return null
+
+  // 1. 단락 내에 마크다운 이미지(![alt](url))가 포함되어 있는 경우 (단독 또는 복합 텍스트 혼합)
+  if (trimmed.includes('![') && /!\[(.*?)\]\((.*?)\)/.test(trimmed)) {
+    const parts = trimmed.split(/(!\[.*?\]\(.*?\))/g).filter(Boolean)
+    return (
+      <React.Fragment key={key}>
+        {parts.map((part, pIdx) => {
+          const imgMatch = part.trim().match(/^!\[(.*?)\]\((.*?)\)$/)
+          if (imgMatch) {
+            const altText = imgMatch[1].trim()
+            const imgUrl = imgMatch[2].trim()
+            return (
+              <div
+                key={`${String(key)}-img-${pIdx}`}
+                style={{
+                  margin: '16px 0',
+                  padding: '16px',
+                  background: '#ffffff',
+                  borderRadius: '12px',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
+                <img
+                  src={imgUrl}
+                  alt={altText || '문항 도표/그래프'}
+                  style={{
+                    maxWidth: '100%',
+                    height: 'auto',
+                    maxHeight: '420px',
+                    borderRadius: '8px',
+                    objectFit: 'contain'
+                  }}
+                />
+                {altText && (
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>
+                    ▲ {altText}
+                  </span>
+                )}
+              </div>
+            )
+          }
+
+          const partTrimmed = part.trim()
+          if (!partTrimmed) return null
+
+          // 소문항 번호((1), (2), (3) 등)나 발문 기호로 시작하는 문장은 일반 본문으로 통일
+          const isSubQuestion = /^\(\d+\)|^\([a-zA-Z]\)|^※|^【/.test(partTrimmed)
+          const isMath = !isSubQuestion && (
+            partTrimmed.includes('y =') ||
+            partTrimmed.includes('∫') ||
+            (partTrimmed.startsWith('① ') && partTrimmed.includes('=')) ||
+            (partTrimmed.startsWith('② ') && partTrimmed.includes('='))
+          )
+
+          if (isMath) {
+            return (
+              <div
+                key={`${String(key)}-txt-${pIdx}`}
+                style={{
+                  margin: '10px 0',
+                  padding: '12px 16px',
+                  background: '#f8fafc',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  fontFamily: "'Pretendard', -apple-system, sans-serif",
+                  fontSize: '13.5px',
+                  lineHeight: 1.65,
+                  color: '#1e293b',
+                  whiteSpace: 'pre-wrap'
+                }}
+              >
+                {partTrimmed}
+              </div>
+            )
+          }
+
+          return (
+            <p key={`${String(key)}-txt-${pIdx}`} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75, marginBottom: '12px' }}>
+              {partTrimmed}
+            </p>
+          )
+        })}
+      </React.Fragment>
+    )
+  }
+
+  // 2. 수식 및 함수 다중행 블록 감지 (소문항 번호로 시작하는 문장은 제외하여 (1), (2), (3) 위계 통일)
+  const isSubQuestion = /^\(\d+\)|^\([a-zA-Z]\)|^※|^【/.test(trimmed)
+  const isMathBlock = !isSubQuestion && (
+    trimmed.includes('y =') ||
+    trimmed.includes('∫') ||
+    (trimmed.startsWith('① ') && trimmed.includes('=')) ||
+    (trimmed.startsWith('② ') && trimmed.includes('='))
+  )
+
+  if (isMathBlock) {
+    return (
+      <div
+        key={key}
+        style={{
+          margin: '10px 0',
+          padding: '12px 16px',
+          background: '#f8fafc',
+          borderRadius: '8px',
+          border: '1px solid #e2e8f0',
+          fontFamily: "'Pretendard', -apple-system, sans-serif",
+          fontSize: '13.5px',
+          lineHeight: 1.65,
+          color: '#1e293b',
+          whiteSpace: 'pre-wrap'
+        }}
+      >
+        {trimmed}
+      </div>
+    )
+  }
+
+  // 3. 일반 본문 단락
+  return (
+    <p key={key} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75, marginBottom: '12px' }}>
+      {trimmed}
+    </p>
+  )
+}
 
 interface ExamWorkspaceProps {
   selectedUniv?: string
   selectedExamId?: string
-  initialQuestion?: 'q1' | 'q2'
+  initialQuestion?: string
   onReport: (report?: GradingReportData) => void
   onBack?: () => void
   onHome?: () => void
@@ -44,14 +202,475 @@ export default function ExamWorkspace({
   onBack,
   onHome,
 }: ExamWorkspaceProps) {
+  // 로그인 사용자 및 관리자 권한 확인
+  const { isAdmin, user, userDisplayName } = useAuth()
+  // 관리자 전용 인라인 문제 편집 모드 활성화 상태
+  const [isEditMode, setIsEditMode] = useState<boolean>(false)
+  // 문항 데이터 DB 저장 진행 상태
+  const [isSavingExam, setIsSavingExam] = useState<boolean>(false)
+  // 특정 제시문 도표 이미지 업로드 진행 상태 (제시문 인덱스)
+  const [uploadingPassageIdx, setUploadingPassageIdx] = useState<number | null>(null)
+  // 관리자 전용 상단 알림 배너
+  const [adminNotice, setAdminNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  // 파일 선택 창 참조
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
+  // 문제지 원본 PDF 상태 및 전용 업로더 참조
+  const [pdfUrl, setPdfUrl] = useState<string>('')
+  const [pdfName, setPdfName] = useState<string>('')
+  const [isUploadingPdf, setIsUploadingPdf] = useState<boolean>(false)
+  const pdfInputRef = useRef<HTMLInputElement | null>(null)
+
   // 현재 응시 중인 대학명 (props와 동기화)
   const currentUniv = selectedUniv || (selectedExamId?.startsWith('khu') ? '경희대학교' : '홍익대학교')
-  // 문제 1과 문제 2 탭 전환 상태 ('q1' | 'q2')
-  const [activeQuestion, setActiveQuestion] = useState<'q1' | 'q2'>(initialQuestion)
+  // 문제 탭 전환 상태 (q1, q2, q3 등 동적 지원)
+  const [activeQuestion, setActiveQuestion] = useState<string>(initialQuestion || 'q1')
   // 문제별 작성 답안 독립 관리 (공백 초기화)
-  const [answers, setAnswers] = useState<{ q1: string; q2: string }>({ q1: '', q2: '' })
+  const [answers, setAnswers] = useState<Record<string, string>>({})
   const [showModelModal, setShowModelModal] = useState(false)
   const [showRubricModal, setShowRubricModal] = useState(false)
+  // ▦ 200자 정통 원고지 팝업 모달 상태
+  const [showManuscriptModal, setShowManuscriptModal] = useState<boolean>(false)
+  // 🔍 관리자 전용 채점 프롬프트 실시간 검사 및 튜닝 모달 상태
+  const [showPromptInspector, setShowPromptInspector] = useState<boolean>(false)
+
+  // 관리자 토스트 알림 표시
+  const triggerAdminNotice = (type: 'success' | 'error', message: string) => {
+    setAdminNotice({ type, message })
+    setTimeout(() => {
+      setAdminNotice(null)
+    }, 4000)
+  }
+
+  // 발문 제목 변경 핸들러
+  const handleUpdateTitle = (val: string) => {
+    setQuestionsData(prev => ({
+      ...prev,
+      [activeQuestion]: {
+        ...prev[activeQuestion],
+        title: val
+      }
+    }))
+  }
+
+  // 발문 유의사항/지시문 변경 핸들러
+  const handleUpdateNote = (val: string) => {
+    setQuestionsData(prev => ({
+      ...prev,
+      [activeQuestion]: {
+        ...prev[activeQuestion],
+        note: val
+      }
+    }))
+  }
+
+  // 제시문 뱃지명 변경 핸들러 (예: [제시문 가])
+  const handleUpdatePassageBadge = (pIdx: number, val: string) => {
+    setQuestionsData(prev => {
+      const q = prev[activeQuestion]
+      if (!q) return prev
+      const newPassages = [...q.passages]
+      if (newPassages[pIdx]) {
+        newPassages[pIdx] = { ...newPassages[pIdx], badge: val }
+      }
+      return {
+        ...prev,
+        [activeQuestion]: { ...q, passages: newPassages }
+      }
+    })
+  }
+
+  // 제시문 단락(paragraph) 텍스트 변경 핸들러
+  const handleUpdateParagraph = (pIdx: number, paraIdx: number, val: string) => {
+    setQuestionsData(prev => {
+      const q = prev[activeQuestion]
+      if (!q) return prev
+      const newPassages = [...q.passages]
+      if (newPassages[pIdx]) {
+        const newParas = [...newPassages[pIdx].paragraphs]
+        newParas[paraIdx] = val
+        newPassages[pIdx] = { ...newPassages[pIdx], paragraphs: newParas }
+      }
+      return {
+        ...prev,
+        [activeQuestion]: { ...q, passages: newPassages }
+      }
+    })
+  }
+
+  // 제시문에 새 본문 단락 추가 핸들러
+  const handleAddParagraph = (pIdx: number) => {
+    setQuestionsData(prev => {
+      const q = prev[activeQuestion]
+      if (!q) return prev
+      const newPassages = [...q.passages]
+      if (newPassages[pIdx]) {
+        const newParas = [...newPassages[pIdx].paragraphs, '']
+        newPassages[pIdx] = { ...newPassages[pIdx], paragraphs: newParas }
+      }
+      return {
+        ...prev,
+        [activeQuestion]: { ...q, passages: newPassages }
+      }
+    })
+  }
+
+  // 제시문 단락 삭제 핸들러
+  const handleDeleteParagraph = (pIdx: number, paraIdx: number) => {
+    setQuestionsData(prev => {
+      const q = prev[activeQuestion]
+      if (!q) return prev
+      const newPassages = [...q.passages]
+      if (newPassages[pIdx]) {
+        const newParas = newPassages[pIdx].paragraphs.filter((_, idx) => idx !== paraIdx)
+        newPassages[pIdx] = { ...newPassages[pIdx], paragraphs: newParas }
+      }
+      return {
+        ...prev,
+        [activeQuestion]: { ...q, passages: newPassages }
+      }
+    })
+  }
+
+  // 새 제시문([라], [마] 등) 추가 핸들러
+  const handleAddPassage = () => {
+    setQuestionsData(prev => {
+      const q = prev[activeQuestion]
+      if (!q) return prev
+      const hangulLabels = ['가', '나', '다', '라', '마', '바', '사', '아', '자', '차']
+      const nextBadge = `[제시문 ${hangulLabels[q.passages.length] || q.passages.length + 1}]`
+      const newPassages = [...q.passages, { badge: nextBadge, paragraphs: ['새 제시문 내용을 입력하세요.'] }]
+      return {
+        ...prev,
+        [activeQuestion]: { ...q, passages: newPassages }
+      }
+    })
+  }
+
+  // 제시문 전체 삭제 핸들러
+  const handleDeletePassage = (pIdx: number) => {
+    if (!confirm('해당 제시문을 삭제하시겠습니까?')) return
+    setQuestionsData(prev => {
+      const q = prev[activeQuestion]
+      if (!q) return prev
+      const newPassages = q.passages.filter((_, idx) => idx !== pIdx)
+      return {
+        ...prev,
+        [activeQuestion]: { ...q, passages: newPassages }
+      }
+    })
+  }
+
+  // 도표/그래프 이미지 업로드 대상 위치 (발문 상단/하단 또는 제시문 상단/하단)
+  type UploadTarget =
+    | { type: 'prompt'; position: 'top' | 'bottom' }
+    | { type: 'passage'; pIdx: number; position: 'top' | 'bottom' }
+
+  const uploadTargetRef = useRef<UploadTarget | null>(null)
+  const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false)
+
+  // 도표/그래프 이미지 파일 선택 창 호출 (발문용)
+  const handleTriggerPromptUpload = (position: 'top' | 'bottom') => {
+    uploadTargetRef.current = { type: 'prompt', position }
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+      imageInputRef.current.click()
+    }
+  }
+
+  // 도표/그래프 이미지 파일 선택 창 호출 (제시문용)
+  const handleTriggerPassageUpload = (pIdx: number, position: 'top' | 'bottom') => {
+    uploadTargetRef.current = { type: 'passage', pIdx, position }
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+      imageInputRef.current.click()
+    }
+  }
+
+  // 단락 한 칸 위로 이동 핸들러
+  const handleMoveParagraphUp = (pIdx: number, paraIdx: number) => {
+    if (paraIdx <= 0) return
+    setQuestionsData(prev => {
+      const q = prev[activeQuestion]
+      if (!q) return prev
+      const newPassages = [...q.passages]
+      if (newPassages[pIdx]) {
+        const newParas = [...newPassages[pIdx].paragraphs]
+        const temp = newParas[paraIdx - 1]
+        newParas[paraIdx - 1] = newParas[paraIdx]
+        newParas[paraIdx] = temp
+        newPassages[pIdx] = { ...newPassages[pIdx], paragraphs: newParas }
+      }
+      return {
+        ...prev,
+        [activeQuestion]: { ...q, passages: newPassages }
+      }
+    })
+  }
+
+  // 단락 한 칸 아래로 이동 핸들러
+  const handleMoveParagraphDown = (pIdx: number, paraIdx: number) => {
+    setQuestionsData(prev => {
+      const q = prev[activeQuestion]
+      if (!q) return prev
+      const newPassages = [...q.passages]
+      if (newPassages[pIdx]) {
+        const newParas = [...newPassages[pIdx].paragraphs]
+        if (paraIdx >= newParas.length - 1) return prev
+        const temp = newParas[paraIdx + 1]
+        newParas[paraIdx + 1] = newParas[paraIdx]
+        newParas[paraIdx] = temp
+        newPassages[pIdx] = { ...newPassages[pIdx], paragraphs: newParas }
+      }
+      return {
+        ...prev,
+        [activeQuestion]: { ...q, passages: newPassages }
+      }
+    })
+  }
+
+  // 발문에 첨부된 도표 이미지 삭제 핸들러
+  const handleRemovePromptImage = (targetMarkdown: string) => {
+    setQuestionsData(prev => {
+      const q = prev[activeQuestion]
+      if (!q) return prev
+      const currentNote = q.note || ''
+      const updatedNote = currentNote.replace(targetMarkdown, '').replace(/\n\s*\n\s*\n/g, '\n\n').trim()
+      return {
+        ...prev,
+        [activeQuestion]: { ...q, note: updatedNote }
+      }
+    })
+    triggerAdminNotice('success', '문제 발문에서 도표 이미지가 제거되었습니다.')
+  }
+
+  // 도표/그래프 파일 업로드 및 선택된 위치(문제 위/아래, 제시문 상단/하단)에 자동 삽입
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    const target = uploadTargetRef.current
+    if (!file || !target) return
+
+    setIsUploadingImage(true)
+    if (target.type === 'passage') {
+      setUploadingPassageIdx(target.pIdx)
+    }
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('univId', selectedUniv || 'common')
+
+      const res = await fetch('/api/admin/upload-exam-image', {
+        method: 'POST',
+        body: formData
+      })
+      const result = await res.json()
+
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || '이미지 업로드에 실패했습니다.')
+      }
+
+      // 업로드된 이미지 URL을 마크다운 문법(![alt](url))으로 변환
+      const cleanAlt = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_\-\uAC00-\uD7A3]/g, ' ').trim() || '도표 및 그래프'
+      const markdownImage = `![${cleanAlt}](${result.url})`
+
+      if (target.type === 'prompt') {
+        // 1. 발문(문제)에 도표 첨부 (문제 위 또는 문제 아래)
+        setQuestionsData(prev => {
+          const q = prev[activeQuestion]
+          if (!q) return prev
+          const currentNote = q.note || ''
+          const updatedNote = target.position === 'top'
+            ? (currentNote ? `${markdownImage}\n\n${currentNote}` : markdownImage)
+            : (currentNote ? `${currentNote}\n\n${markdownImage}` : markdownImage)
+          return {
+            ...prev,
+            [activeQuestion]: { ...q, note: updatedNote }
+          }
+        })
+        triggerAdminNotice('success', `도표("${file.name}")가 문제 ${target.position === 'top' ? '위(상단)' : '아래(하단)'}에 성공적으로 첨부되었습니다.`)
+      } else if (target.type === 'passage') {
+        // 2. 제시문에 도표 첨부 (제시문 맨 위 또는 맨 아래)
+        const pIdx = target.pIdx
+        setQuestionsData(prev => {
+          const q = prev[activeQuestion]
+          if (!q) return prev
+          const newPassages = [...q.passages]
+          if (newPassages[pIdx]) {
+            const newParas = target.position === 'top'
+              ? [markdownImage, ...newPassages[pIdx].paragraphs]
+              : [...newPassages[pIdx].paragraphs, markdownImage]
+            newPassages[pIdx] = { ...newPassages[pIdx], paragraphs: newParas }
+          }
+          return {
+            ...prev,
+            [activeQuestion]: { ...q, passages: newPassages }
+          }
+        })
+        triggerAdminNotice('success', `도표("${file.name}")가 제시문 ${target.position === 'top' ? '상단(맨 위)' : '하단(맨 아래)'}에 성공적으로 첨부되었습니다.`)
+      }
+    } catch (err: any) {
+      console.error('도표 이미지 업로드 오류:', err)
+      triggerAdminNotice('error', err.message || '도표 이미지 업로드 실패')
+    } finally {
+      setIsUploadingImage(false)
+      setUploadingPassageIdx(null)
+      uploadTargetRef.current = null
+    }
+  }
+
+  // 수정한 문항 및 제시문 전체 데이터를 Supabase DB에 저장
+  const handleSaveExamQuestions = async () => {
+    if (!selectedExamId) {
+      alert('선택된 시험 식별자(ID)가 없습니다.')
+      return
+    }
+
+    setIsSavingExam(true)
+    try {
+      const payload: any = {
+        id: selectedExamId,
+        questions: questionsData
+      }
+      if (pdfUrl !== undefined) {
+        payload.pdf_url = pdfUrl
+        payload.pdf_name = pdfName
+      }
+
+      const res = await fetch('/api/admin/exams', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      const result = await res.json()
+
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || '문항 데이터 저장에 실패했습니다.')
+      }
+
+      triggerAdminNotice('success', '문제, 제시문 및 원본 PDF 설정이 Supabase DB에 성공적으로 저장되었습니다!')
+    } catch (err: any) {
+      console.error('문항 데이터 저장 오류:', err)
+      triggerAdminNotice('error', err.message || '문항 데이터 저장 실패')
+    } finally {
+      setIsSavingExam(false)
+    }
+  }
+
+  // 문제지 원본 PDF 업로드/교체용 파일 선택 창 열기
+  const handleTriggerPdfUpload = () => {
+    if (pdfInputRef.current) {
+      pdfInputRef.current.value = ''
+      pdfInputRef.current.click()
+    }
+  }
+
+  // 문제지 원본 PDF 파일 업로드 및 로컬 상태 설정 ([DB에 저장] 시 최종 반영)
+  const handlePdfFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsUploadingPdf(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('univId', selectedUniv || 'common')
+
+      const res = await fetch('/api/admin/upload-exam-pdf', {
+        method: 'POST',
+        body: formData
+      })
+      const result = await res.json()
+
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'PDF 파일 업로드에 실패했습니다.')
+      }
+
+      // 이전 등록된 PDF 파일 경로 보관 (새 파일 등록 후 이전 파일 정리용)
+      const oldPdfUrl = pdfUrl || (activeQuestion && questionsData[activeQuestion]?.pdfUrl) || ''
+
+      // 로컬 PDF 상태 갱신 (저장 대기)
+      setPdfUrl(result.url)
+      setPdfName(file.name)
+
+      // questionsData 내의 모든 문항에도 pdfUrl/pdfName 실시간 동기화
+      setQuestionsData(prev => {
+        const next: any = { ...prev }
+        Object.keys(next).forEach(k => {
+          if (next[k]) {
+            next[k] = { ...next[k], pdfUrl: result.url, pdfName: file.name }
+          }
+        })
+        return next
+      })
+
+      // 이전 파일이 로컬 디스크 파일인 경우 정리
+      if (oldPdfUrl && oldPdfUrl !== result.url && oldPdfUrl.startsWith('/exams/pdf/')) {
+        try {
+          await fetch('/api/admin/upload-exam-pdf', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileUrl: oldPdfUrl })
+          })
+        } catch (cleanupErr) {
+          console.warn('이전 PDF 디스크 정리 실패 (무시):', cleanupErr)
+        }
+      }
+
+      triggerAdminNotice('success', `새 원본 PDF("${file.name}")가 설정되었습니다. [DB에 저장] 버튼을 클릭해 최종 반영하세요!`)
+    } catch (err: any) {
+      console.error('PDF 업로드 오류:', err)
+      triggerAdminNotice('error', err.message || 'PDF 업로드 실패')
+    } finally {
+      setIsUploadingPdf(false)
+    }
+  }
+
+  // 등록된 문제지 원본 PDF 삭제
+  const handleRemovePdf = async () => {
+    if (!confirm('등록된 문제지 원본 PDF를 삭제하시겠습니까?')) return
+
+    const prevPdfUrl = pdfUrl || (activeQuestion && questionsData[activeQuestion]?.pdfUrl) || ''
+
+    setPdfUrl('')
+    setPdfName('')
+
+    setQuestionsData(prev => {
+      const next: any = { ...prev }
+      Object.keys(next).forEach(k => {
+        if (next[k]) {
+          next[k] = { ...next[k], pdfUrl: '', pdfName: '' }
+        }
+      })
+      return next
+    })
+
+    if (selectedExamId) {
+      await fetch('/api/admin/exams', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedExamId,
+          pdf_url: '',
+          pdf_name: ''
+        })
+      })
+    }
+
+    // 서버 디스크에서 실제 PDF 파일 삭제 및 정리
+    if (prevPdfUrl && prevPdfUrl.startsWith('/exams/pdf/')) {
+      try {
+        await fetch('/api/admin/upload-exam-pdf', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileUrl: prevPdfUrl })
+        })
+      } catch (cleanupErr) {
+        console.warn('디스크 PDF 파일 삭제 실패 (무시):', cleanupErr)
+      }
+    }
+
+    triggerAdminNotice('success', '문제지 원본 PDF가 성공적으로 삭제되었습니다.')
+  }
 
   // Gemini AI 정밀 채점 로딩 및 20초 지연 감지 상태
   const [isGrading, setIsGrading] = useState(false)
@@ -71,6 +690,11 @@ export default function ExamWorkspace({
       fetchExamQuestionsFromDb(selectedExamId).then((dbData) => {
         if (isMounted && dbData) {
           setQuestionsData(dbData)
+          // DB에서 등록된 PDF 정보 탐색 후 동기화
+          const foundPdf = Object.values(dbData).find(q => q?.pdfUrl)?.pdfUrl
+          const foundName = Object.values(dbData).find(q => q?.pdfName)?.pdfName
+          if (foundPdf) setPdfUrl(foundPdf)
+          if (foundName) setPdfName(foundName || '')
         }
       })
     }
@@ -80,7 +704,50 @@ export default function ExamWorkspace({
   }, [selectedExamId])
 
   const currentQ = questionsData[activeQuestion] || questionsData.q1
+  // 현재 문항 또는 전체 시험 데이터에서 첨부된 원본 PDF 경로 탐색 (로컬 pdfUrl 우선)
+  const currentPdfUrl = pdfUrl || currentQ?.pdfUrl || Object.values(questionsData).find(q => q?.pdfUrl)?.pdfUrl || ''
+  const currentPdfName = pdfName || currentQ?.pdfName || Object.values(questionsData).find(q => q?.pdfName)?.pdfName || ''
   const currentAnswer = answers[activeQuestion] || ''
+
+  // 문제지 원본 PDF를 화면 왼쪽에 100% 높이의 독립 창으로 열람 (사용자가 크기 및 위치 자유 조절 가능)
+  const handleOpenPdfWindow = () => {
+    if (!currentPdfUrl) {
+      alert('등록된 문제지 원본 PDF가 없습니다.\n관리자 모드의 [올인원 추출기] 또는 [새 기출·모의 등록]에서 문제지 PDF를 첨부해 주세요.')
+      return
+    }
+
+    // 1. 현재 사용자 모니터의 사용 가능한 해상도 기반으로 좌측 분할(너비 50%) 및 높이 100% 계산
+    const screenWidth = typeof window !== 'undefined' ? (window.screen?.availWidth || 1600) : 1600
+    const screenHeight = typeof window !== 'undefined' ? (window.screen?.availHeight || 900) : 900
+    const popupWidth = Math.floor(screenWidth * 0.5)
+    const popupHeight = screenHeight
+    const popupLeft = 0
+    const popupTop = 0
+
+    // 2. 크기 및 위치 조정이 가능한(resizable=yes) 독립 브라우저 팝업 창 옵션 구성
+    const windowFeatures = [
+      `width=${popupWidth}`,
+      `height=${popupHeight}`,
+      `left=${popupLeft}`,
+      `top=${popupTop}`,
+      'resizable=yes',
+      'scrollbars=yes',
+      'status=no',
+      'toolbar=no',
+      'menubar=no'
+    ].join(',')
+
+    // PDF 표준 파라미터:
+    // #navpanes=0 : 좌측 썸네일/목차 탐색 패널 닫기 (문제 본문만 스크롤)
+    // #pagemode=none : 썸네일 모드 해제
+    // #view=FitH : 문서 가로폭 맞춤
+    const pdfUrlWithParams = `${currentPdfUrl}#navpanes=0&pagemode=none&view=FitH`
+
+    const pdfWindow = window.open(pdfUrlWithParams, 'ExamPdfViewerPopup', windowFeatures)
+    if (pdfWindow) {
+      pdfWindow.focus()
+    }
+  }
 
   const handleAnswerChange = (val: string) => {
     setAnswers((prev) => ({ ...prev, [activeQuestion]: val }))
@@ -103,6 +770,82 @@ export default function ExamWorkspace({
   // 사용자가 계속 기다리기를 눌렀을 때 안내 박스를 숨기고 대기 유지
   const handleKeepWaiting = () => {
     setIsGradingDelayed(false)
+  }
+
+  // 🔍 관리자 전용 커스텀 프롬프트 기반 즉시 채점 핸들러
+  const handleRunCustomGrade = async (customSysPrompt: string, customUserPrompt: string) => {
+    const trimmed = currentAnswer.trim()
+    if (!trimmed || trimmed.length < 30) {
+      alert('답안을 최소 30자 이상 작성하신 후 채점을 진행해 주세요.')
+      return
+    }
+
+    setIsGrading(true)
+    setGradingStep(1)
+    setIsGradingDelayed(false)
+    setShowPromptInspector(false)
+
+    const t1 = setTimeout(() => setGradingStep(2), 2200)
+    const t2 = setTimeout(() => setGradingStep(3), 4800)
+
+    try {
+      const res = await fetch('/api/grade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          university: currentUniv,
+          examTitle: currentQ.tag || `${currentUniv} 수시 논술`,
+          questionLabel: currentQ.label,
+          questionTitle: currentQ.title,
+          charLimit: currentQ.limit || '800±100자',
+          passages: currentQ.passages,
+          rubric: currentQ.rubric,
+          modelAnswer: currentQ.modelAnswer,
+          studentAnswer: currentAnswer,
+          studentName: '관리자(시뮬레이션)',
+          customSystemPrompt: customSysPrompt,
+          customUserPrompt: customUserPrompt,
+        }),
+      })
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}))
+        throw new Error(errJson?.error || '채점 분석 서버 응답 오류가 발생했습니다.')
+      }
+
+      const reportData: GradingReportData = await res.json()
+
+      // 로그인된 수험생/관리자의 경우 DB에 답안 및 채점 리포트 영구 저장
+      if (user) {
+        supabase
+          .from('student_submissions')
+          .insert({
+            user_id: user.id,
+            exam_id: selectedExamId,
+            exam_title: currentQ.tag || `${currentUniv} 수시 논술`,
+            university: currentUniv,
+            question_label: currentQ.label || '문항 1',
+            student_answer: currentAnswer,
+            char_count: currentAnswer.length,
+            total_score: reportData.totalScore || 0,
+            status_verdict: reportData.statusVerdict || '채점 완료',
+            grading_report: reportData,
+          })
+          .then(({ error: saveErr }) => {
+            if (saveErr) console.warn('[ExamWorkspace] 커스텀 채점 영구 저장 오류:', saveErr.message)
+            else console.log('[ExamWorkspace] 커스텀 채점 리포트 DB 저장 성공!')
+          })
+      }
+
+      onReport(reportData)
+    } catch (err: any) {
+      console.warn('커스텀 프롬프트 채점 오류:', err)
+      alert(`커스텀 프롬프트 채점 오류: ${err.message}`)
+    } finally {
+      clearTimeout(t1)
+      clearTimeout(t2)
+      setIsGrading(false)
+    }
   }
 
   // Gemini API를 호출하여 공식 채점 기준표에 따라 실시간 채점을 수행하는 핸들러
@@ -155,6 +898,29 @@ export default function ExamWorkspace({
       }
 
       const reportData: GradingReportData = await res.json()
+
+      // 로그인된 수험생/관리자의 경우 DB에 답안 및 채점 리포트 영구 저장
+      if (user) {
+        supabase
+          .from('student_submissions')
+          .insert({
+            user_id: user.id,
+            exam_id: selectedExamId,
+            exam_title: currentQ.tag || `${currentUniv} 수시 논술`,
+            university: currentUniv,
+            question_label: currentQ.label || '문항 1',
+            student_answer: currentAnswer,
+            char_count: currentAnswer.length,
+            total_score: reportData.totalScore || 0,
+            status_verdict: reportData.statusVerdict || '채점 완료',
+            grading_report: reportData,
+          })
+          .then(({ error: saveErr }) => {
+            if (saveErr) console.warn('[ExamWorkspace] 답안 영구 저장 오류:', saveErr.message)
+            else console.log('[ExamWorkspace] 답안 및 채점 리포트 DB 저장 성공!')
+          })
+      }
+
       onReport(reportData)
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -216,12 +982,12 @@ export default function ExamWorkspace({
         </div>
         <div className="exam-status">
           <span className="status-dot" /> 자동 저장됨 <span className="divider" />{' '}
-          {questionsData.q2 && questionsData.q2.passages && questionsData.q2.passages.length > 0
-            ? activeQuestion === 'q1'
-              ? '문제 1 / 2'
-              : '문제 2 / 2'
-            : '문제 1 / 1'}{' '}
-          (소요 시간 60분)
+          {(() => {
+            const keys = Object.keys(questionsData).filter(k => questionsData[k] && questionsData[k].passages)
+            const currentIdx = keys.indexOf(activeQuestion) + 1
+            return `문제 ${currentIdx > 0 ? currentIdx : 1} / ${keys.length}`
+          })()}{' '}
+          (소요 시간 120분)
         </div>
       </div>
 
@@ -240,59 +1006,272 @@ export default function ExamWorkspace({
               </p>
               <h1>{currentQ.tag || `${currentUniv} 논술고사`}</h1>
             </div>
-            <button className="icon-button" aria-label="읽기 도구">
-              <FileText />
-            </button>
           </div>
-          <div className="question-tabs">
-            <button
-              className={activeQuestion === 'q1' ? 'active' : ''}
-              onClick={() => setActiveQuestion('q1')}
-            >
-              {questionsData.q1.label} {answers.q1.trim().length > 0 && <span className="tab-check"><Check /></span>}
-            </button>
-            {questionsData.q2 && questionsData.q2.passages && questionsData.q2.passages.length > 0 && (
-              <button
-                className={activeQuestion === 'q2' ? 'active' : ''}
-                onClick={() => setActiveQuestion('q2')}
-              >
-                {questionsData.q2.label} {answers.q2.trim().length > 0 && <span className="tab-check"><Check /></span>}
-              </button>
-            )}
-          </div>
-          <div className="reading-scroll">
-            <article className="prompt-card">
-              {(() => {
-                const rawTitle = currentQ.title || ''
-                const match = rawTitle.match(/^(【.*?】)(.*)/)
-                const header = match ? match[1].trim() : (rawTitle.startsWith('【') ? rawTitle : `【${currentQ.label || '문제 1'}】`)
-                const body = (match && match[2].trim()) ? match[2].trim() : (currentQ.note || '')
-                return (
-                  <>
-                    <div className="prompt-title-row">
-                      <h2>{header}</h2>
-                    </div>
-                    {body && <p className="prompt-body-text">{body}</p>}
-                  </>
-                )
-              })()}
-            </article>
-
-            {/* 실제 기출 제시문 목록 */}
-            <div className="passage-block">
-              {currentQ.passages.map((p, idx) => (
-                <section key={idx} className="passage-card">
-                  <div className="passage-header">
-                    <span className="passage-badge">{p.badge}</span>
-                  </div>
-                  <div className="passage-body">
-                    {p.paragraphs.map((para, pIdx) => (
-                      <p key={pIdx}>{para}</p>
-                    ))}
-                  </div>
-                </section>
-              ))}
+          <div className="question-tabs" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: '28px' }}>
+              {Object.keys(questionsData)
+                .filter(k => questionsData[k] && questionsData[k].passages)
+                .map(qKey => {
+                  const qItem = questionsData[qKey]
+                  const isAnswered = (answers[qKey] || '').trim().length > 0
+                  return (
+                    <button
+                      key={qKey}
+                      className={activeQuestion === qKey ? 'active' : ''}
+                      onClick={() => setActiveQuestion(qKey)}
+                    >
+                      {qItem.label || `문제 ${qKey.replace('q', '')}`} {isAnswered && <span className="tab-check"><Check /></span>}
+                    </button>
+                  )
+                })}
             </div>
+            {/* 상단 우측 액션: 원본 PDF 버튼 및 관리자 전용 인라인 편집 툴바 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+              {/* 원본 PDF 버튼:
+                  - 편집모드 OFF: 기존처럼 새 창으로 PDF 열람
+                  - 편집모드 ON: 클릭 시 바로 파일 탐색기가 열려 PDF 추가/교체 설정 ([DB에 저장] 시 최종 반영) */}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <button
+                  type="button"
+                  onClick={isEditMode ? handleTriggerPdfUpload : handleOpenPdfWindow}
+                  className="pdf-view-tab-btn"
+                  title={
+                    isEditMode
+                      ? (currentPdfName
+                          ? `등록 파일: ${currentPdfName}\n클릭하여 새 PDF 파일로 교체할 수 있습니다. ([DB에 저장] 시 최종 반영)`
+                          : '클릭하여 문제지 원본 PDF 파일을 선택/등록합니다. ([DB에 저장] 시 최종 반영)')
+                      : currentPdfUrl
+                      ? '문제지 원본 PDF 새 창으로 열람'
+                      : '등록된 문제지 원본 PDF가 없습니다.'
+                  }
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    padding: '4px 10px',
+                    backgroundColor: isEditMode
+                      ? (currentPdfUrl ? '#eff6ff' : '#fff7ed')
+                      : (currentPdfUrl ? '#fff1f2' : '#f8fafc'),
+                    color: isEditMode
+                      ? (currentPdfUrl ? '#2563eb' : '#ea580c')
+                      : (currentPdfUrl ? '#e11d48' : '#64748b'),
+                    border: `1.5px solid ${
+                      isEditMode
+                        ? (currentPdfUrl ? '#93c5fd' : '#fdba74')
+                        : (currentPdfUrl ? '#fecdd3' : '#e2e8f0')
+                    }`,
+                    borderRadius: '8px',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {isEditMode ? (
+                    isUploadingPdf ? <Loader2 size={13} className="animate-spin" /> : <FileUp size={13} />
+                  ) : (
+                    <FileText size={13} />
+                  )}
+                  <span>
+                    {isEditMode
+                      ? (currentPdfUrl ? '원본PDF' : '+ 원본 PDF 선택')
+                      : (currentPdfUrl ? '원본 PDF' : '원본 PDF (미등록)')}
+                  </span>
+                </button>
+
+                {/* 편집 모드에서 등록된 PDF가 있을 때 간편 삭제 미니 버튼 */}
+                {isEditMode && currentPdfUrl && (
+                  <button
+                    type="button"
+                    onClick={handleRemovePdf}
+                    title="설정된 원본 PDF 삭제"
+                    style={{
+                      padding: '4px 6px',
+                      backgroundColor: '#fef2f2',
+                      color: '#dc2626',
+                      border: '1px solid #fecaca',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
+
+              {/* 관리자(admin) 전용 문제 인라인 편집 모드 토글 및 DB 저장 버튼 */}
+              {isAdmin && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditMode(prev => !prev)}
+                    className="admin-edit-toggle-btn"
+                    title="화면에서 문제와 제시문, 도표 이미지를 직접 수정하는 편집 모드 토글"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '4px 11px',
+                      backgroundColor: isEditMode ? '#4338ca' : '#eef2ff',
+                      color: isEditMode ? '#ffffff' : '#4338ca',
+                      border: `1px solid ${isEditMode ? '#3730a3' : '#c7d2fe'}`,
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <Edit3 size={13} />
+                    <span>{isEditMode ? '편집 모드 ON' : '문제 편집 모드'}</span>
+                  </button>
+
+                  {isEditMode && (
+                    <button
+                      type="button"
+                      onClick={handleSaveExamQuestions}
+                      disabled={isSavingExam}
+                      title="수정한 문제, 제시문, 도표 이미지 및 원본 PDF 설정을 Supabase DB에 일괄 저장"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '4px 12px',
+                        backgroundColor: '#16a34a',
+                        color: '#ffffff',
+                        border: '1px solid #15803d',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: isSavingExam ? 'not-allowed' : 'pointer',
+                        boxShadow: '0 1px 3px rgba(22, 163, 74, 0.3)',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {isSavingExam ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                      <span>{isSavingExam ? '저장 중...' : 'DB에 저장'}</span>
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* 도표/그래프 이미지 업로드용 숨김 파일 인풋 */}
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleImageFileChange}
+          />
+
+          {/* 문제지 원본 PDF 업로드/교체용 숨김 파일 인풋 */}
+          <input
+            ref={pdfInputRef}
+            type="file"
+            accept=".pdf,application/pdf"
+            style={{ display: 'none' }}
+            onChange={handlePdfFileChange}
+          />
+
+          <div className="reading-scroll">
+            {/* 관리자 알림 토스트 배너 */}
+            {adminNotice && (
+              <div
+                style={{
+                  margin: '0 0 14px 0',
+                  padding: '10px 14px',
+                  borderRadius: '8px',
+                  backgroundColor: adminNotice.type === 'success' ? '#f0fdf4' : '#fef2f2',
+                  border: `1px solid ${adminNotice.type === 'success' ? '#86efac' : '#fecaca'}`,
+                  color: adminNotice.type === 'success' ? '#15803d' : '#b91c1c',
+                  fontSize: '12.5px',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                {adminNotice.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                <span>{adminNotice.message}</span>
+              </div>
+            )}
+
+            {/* A. 관리자 인라인 편집 모드 뷰 (모듈화 컴포넌트) */}
+            {isEditMode ? (
+              <ExamInlineEditor
+                currentQ={currentQ}
+                isUploadingImage={isUploadingImage}
+                onTriggerPromptUpload={handleTriggerPromptUpload}
+                onUpdateTitle={handleUpdateTitle}
+                onUpdateNote={handleUpdateNote}
+                onRemovePromptImage={handleRemovePromptImage}
+                onUpdatePassageBadge={handleUpdatePassageBadge}
+                onDeletePassage={handleDeletePassage}
+                onUpdateParagraph={handleUpdateParagraph}
+                onMoveParagraphUp={handleMoveParagraphUp}
+                onMoveParagraphDown={handleMoveParagraphDown}
+                onDeleteParagraph={handleDeleteParagraph}
+                onTriggerPassageUpload={handleTriggerPassageUpload}
+                onAddParagraph={handleAddParagraph}
+                onAddPassage={handleAddPassage}
+              />
+            ) : (
+              /* B. 일반 학생 응시 및 기본 열람 뷰 */
+              <>
+                <article className="prompt-card">
+                  {(() => {
+                    const rawTitle = currentQ.title || ''
+                    const match = rawTitle.match(/^(【.*?】)(.*)/)
+                    const header = match ? match[1].trim() : (rawTitle.startsWith('【') ? rawTitle : `【${currentQ.label || '문제 1'}】`)
+                    const titleSubtitle = (match && match[2].trim()) ? match[2].trim() : ''
+                    const noteText = currentQ.note || ''
+
+                    // 소제목과 문제 전문을 누락 없이 스마트하게 통합
+                    let body = ''
+                    if (titleSubtitle && noteText) {
+                      body = noteText.includes(titleSubtitle) ? noteText : `${titleSubtitle}\n\n${noteText}`
+                    } else {
+                      body = titleSubtitle || noteText
+                    }
+                    return (
+                      <>
+                        <div className="prompt-title-row">
+                          <h2>{header}</h2>
+                        </div>
+                        {body && (
+                          <div className="prompt-body-text">
+                            {body
+                              .split(/\r?\n\r?\n/)
+                              .map((b) => b.trim())
+                              .filter(Boolean)
+                              .map((bPara, bIdx) => renderFormattedParagraph(bPara, `prompt-body-${bIdx}`))}
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
+                </article>
+
+                {/* 실제 기출 제시문 목록 */}
+                <div className="passage-block">
+                  {currentQ.passages.map((p, idx) => (
+                    <section key={idx} className="passage-card">
+                      <div className="passage-header">
+                        <span className="passage-badge">{p.badge}</span>
+                      </div>
+                      <div className="passage-body">
+                        {p.paragraphs.map((para, pIdx) => renderFormattedParagraph(para, `p-${idx}-${pIdx}`))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </section>
 
@@ -304,7 +1283,37 @@ export default function ExamWorkspace({
           <div className="editor-heading">
             <div>
               <p className="eyebrow">ANSWER SHEET · 실전 답안 에디터</p>
-              <h2 className="editor-main-title">나의 답안 작성</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                <h2 className="editor-main-title">나의 답안 작성</h2>
+                {/* ▦ 실전 원고지 (400자 / 800자 / 1000자 선택형) 팝업 작성기 버튼 */}
+                <button
+                  type="button"
+                  onClick={() => setShowManuscriptModal(true)}
+                  className="manuscript-open-btn"
+                  title="대학 논술 실전 원고지(400자·800자·1,000자) 팝업 에디터 열기 (한 칸 정밀 입력)"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '5px 14px',
+                    borderRadius: '8px',
+                    border: '1.5px solid #86efac',
+                    backgroundColor: '#f0fdf4',
+                    color: '#166534',
+                    fontSize: '12.5px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 3px rgba(22, 101, 52, 0.08)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span style={{ fontSize: '13px' }}>▦</span>
+                  <span>실전 원고지 작성</span>
+                  <span style={{ fontSize: '10.5px', backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 5px', borderRadius: '4px' }}>
+                    400·800·1000자 선택
+                  </span>
+                </button>
+              </div>
             </div>
             <div className="editor-top-actions">
               <button
@@ -410,6 +1419,32 @@ export default function ExamWorkspace({
               <span>{gradingNotice}</span>
             </div>
           )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowPromptInspector(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                background: 'linear-gradient(135deg, #4338ca 0%, #312e81 100%)',
+                color: '#ffffff',
+                border: '1px solid #4f46e5',
+                borderRadius: '8px',
+                fontSize: '12.5px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: '0 2px 6px rgba(67, 56, 202, 0.25)',
+                marginRight: '6px',
+                transition: 'all 0.15s ease'
+              }}
+              title="현재 문항 채점 시 Gemini API로 전송되는 프롬프트를 확인하고 즉석 튜닝합니다"
+            >
+              <Terminal size={14} />
+              <span>🔍 채점 프롬프트 검사 & 튜닝</span>
+            </button>
+          )}
           <Button className="bottom-submit-btn" onClick={handleSubmitAndGrade} disabled={isGrading}>
             {isGrading ? <Loader2 className="animate-spin" size={16} /> : null}
             {isGrading ? 'AI 채점관 정밀 분석 진행 중...' : '답안 제출 후 정밀 채점 리포트 보기'} <ArrowRight data-icon="inline-end" />
@@ -439,9 +1474,9 @@ export default function ExamWorkspace({
             <div className="model-modal-body">
               <div className="model-modal-callout">{currentQ.modalCallout}</div>
               <div className="model-modal-text">
-                {currentQ.modelAnswer.split('\n\n').map((para, idx) => (
-                  <p key={idx}>{para}</p>
-                ))}
+                {currentQ.modelAnswer.split('\n\n').map((para, idx) =>
+                  renderFormattedParagraph(para, `model-${idx}`)
+                )}
               </div>
             </div>
             <div className="model-modal-footer">
@@ -505,32 +1540,43 @@ export default function ExamWorkspace({
               </div>
 
               <div className="rubric-table-wrap">
-                <table className="rubric-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '24%' }}>평가 영역</th>
-                      <th style={{ width: '20%' }}>평가 대상</th>
-                      <th style={{ width: '44%' }}>세부 채점 기준 및 핵심 도출 내용</th>
-                      <th style={{ width: '12%', textAlign: 'center' }}>배점</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {currentQ.rubric.items.map((sec, sIdx) =>
-                      sec.subItems.map((sub, subIdx) => (
-                        <tr key={`${sIdx}-${subIdx}`}>
-                          {subIdx === 0 && (
-                            <td rowSpan={sec.subItems.length} className="rubric-sec-title">
-                              {sec.category}
-                            </td>
-                          )}
-                          <td className="rubric-item-name">{sub.name}</td>
-                          <td className="rubric-item-desc">{sub.desc}</td>
-                          <td className="rubric-item-points">{sub.points}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                {(!currentQ.rubric.items || currentQ.rubric.items.length === 0) ? (
+                  <div style={{ padding: '28px 20px', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1', color: '#475569', margin: '8px 0' }}>
+                    <p style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px', color: '#1e293b' }}>
+                      📋 문항별 세부 루브릭 준비 중
+                    </p>
+                    <p style={{ fontSize: '13.5px', margin: 0, lineHeight: 1.6 }}>
+                      본 문항은 대학 공식 <strong>모범답안, 제시문 핵심 논점 및 규정 분량(±10%)</strong>을 기준으로 AI 채점관의 블라인드 정밀 채점과 1:1 맞춤 첨삭이 정상 진행됩니다.
+                    </p>
+                  </div>
+                ) : (
+                  <table className="rubric-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '24%' }}>평가 영역</th>
+                        <th style={{ width: '20%' }}>평가 대상</th>
+                        <th style={{ width: '44%' }}>세부 채점 기준 및 핵심 도출 내용</th>
+                        <th style={{ width: '12%', textAlign: 'center' }}>배점</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {currentQ.rubric.items.map((sec, sIdx) =>
+                        sec.subItems.map((sub, subIdx) => (
+                          <tr key={`${sIdx}-${subIdx}`}>
+                            {subIdx === 0 && (
+                              <td rowSpan={sec.subItems.length} className="rubric-sec-title">
+                                {sec.category}
+                              </td>
+                            )}
+                            <td className="rubric-item-name">{sub.name}</td>
+                            <td className="rubric-item-desc">{sub.desc}</td>
+                            <td className="rubric-item-points">{sub.points}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                )}
               </div>
 
               <div className="rubric-deduction-card">
@@ -554,6 +1600,33 @@ export default function ExamWorkspace({
           </div>
         </div>
       )}
+
+      {/* 🔍 관리자 전용 채점 프롬프트 검사 및 실시간 튜닝 모달 */}
+      <PromptInspectorModal
+        isOpen={showPromptInspector}
+        onClose={() => setShowPromptInspector(false)}
+        university={currentUniv}
+        examTitle={currentQ.tag || `${currentUniv} 수시 논술`}
+        questionLabel={currentQ.label}
+        questionTitle={currentQ.title}
+        charLimit={currentQ.limit || '800±100자'}
+        passages={currentQ.passages}
+        rubric={currentQ.rubric}
+        modelAnswer={currentQ.modelAnswer}
+        studentAnswer={currentAnswer}
+        onRunCustomGrade={handleRunCustomGrade}
+        isGrading={isGrading}
+      />
+
+      {/* ▦ 실전 200자 정통 원고지 한 칸 정밀 입력 팝업 모달 */}
+      <ManuscriptModal
+        isOpen={showManuscriptModal}
+        onClose={() => setShowManuscriptModal(false)}
+        value={currentAnswer}
+        onChange={handleAnswerChange}
+        questionLabel={currentQ.label || '문항 1'}
+        targetLimit={currentQ.limit || '800±100자'}
+      />
 
       {/* AI 채점 진행 오버레이 모달 */}
       {isGrading && (

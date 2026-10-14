@@ -18,9 +18,19 @@ import {
   Layers,
   Award,
   BookOpen,
-  CheckSquare
+  CheckSquare,
+  Image as ImageIcon
 } from 'lucide-react'
 import { UNIVERSITY_FACULTIES, UNIVERSITIES } from '@/lib/constants/universities'
+import {
+  uploadExamImage,
+  cleanImageAlt,
+  extractImagesFromText,
+  removeImageFromText,
+  formatImageFileName
+} from '@/lib/exam-image-utils'
+import AttachedImageCard from './AttachedImageCard'
+import ExamPdfUploader from './ExamPdfUploader'
 
 interface AllInOneParserProps {
   selectedUniv: string
@@ -54,7 +64,7 @@ export default function AllInOneParser({
     tab1: boolean
     tab2: boolean
     tab3: boolean
-  }>({ tab1: true, tab2: true, tab3: true })
+  }>({ tab1: true, tab2: false, tab3: false })
 
   const [attachedFiles, setAttachedFiles] = useState<Array<{
     id: string
@@ -66,6 +76,7 @@ export default function AllInOneParser({
     errorMsg?: string
   }>>([])
   const [isUploadingFiles, setIsUploadingFiles] = useState<boolean>(false)
+  const [isDragging, setIsDragging] = useState<boolean>(false)
   const [isParsingAllInOne, setIsParsingAllInOne] = useState<boolean>(false)
   const [isSavingAllInOne, setIsSavingAllInOne] = useState<boolean>(false)
   const [allInOneResult, setAllInOneResult] = useState<{
@@ -74,6 +85,155 @@ export default function AllInOneParser({
     tab3_scoring?: any
   } | null>(null)
   const [allInOnePreviewTab, setAllInOnePreviewTab] = useState<'tab1' | 'tab2' | 'tab3'>('tab1')
+
+  // 📄 직접 편집한 문제지 원본 PDF 사전 첨부 상태 (상단 상시 노출)
+  const [manualPdfUrl, setManualPdfUrl] = useState<string>('')
+  const [manualPdfName, setManualPdfName] = useState<string>('')
+
+  // 📊 도표·그래프 캡처 이미지 업로드 및 문항 삽입 관리 상태
+  const [uploadedImages, setUploadedImages] = useState<Array<{
+    id: string
+    url: string
+    fileName: string
+    originalName: string
+    size: number
+  }>>([])
+  const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false)
+
+  // 도표/그래프 이미지 업로드 공통 처리 함수
+  const processImageFiles = async (files: FileList | File[], targetQuestionIdx?: number) => {
+    const validFiles = Array.from(files).filter((f) => {
+      const ext = f.name.split('.').pop()?.toLowerCase()
+      return ['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif'].includes(ext || '')
+    })
+
+    if (validFiles.length === 0) {
+      showNotice('error', '지원되는 이미지 형식(.png, .jpg, .svg, .webp)을 업로드해 주세요.')
+      return
+    }
+
+    setIsUploadingImage(true)
+    try {
+      const uploadedList: typeof uploadedImages = []
+      for (const file of validFiles) {
+        const uploadResult = await uploadExamImage(file, selectedUniv || 'common')
+
+        uploadedList.push({
+          id: `${Date.now()}-${file.name}`,
+          url: uploadResult.url,
+          fileName: uploadResult.fileName,
+          originalName: uploadResult.originalName,
+          size: uploadResult.size,
+        })
+      }
+
+      setUploadedImages((prev) => [...prev, ...uploadedList])
+      showNotice('success', `${uploadedList.length}개의 도표·그래프 이미지가 안전하게 업로드되었습니다.`)
+
+      // 특정 문항(targetQuestionIdx)에 바로 삽입하도록 지정된 경우 즉시 삽입
+      if (typeof targetQuestionIdx === 'number' && uploadedList[0]) {
+        insertImageToQuestion(targetQuestionIdx, uploadedList[0].url, uploadedList[0].originalName)
+      }
+    } catch (err: any) {
+      showNotice('error', `도표 이미지 업로드 오류: ${err.message}`)
+    } finally {
+      setIsUploadingImage(false)
+    }
+  }
+
+  // 특정 문항에 도표 이미지 마크다운 삽입 (복수 이미지 지원 & 자료별 순차 매핑)
+  const insertImageToQuestion = (qIdx: number, imgUrl: string, imgDesc: string) => {
+    if (!allInOneResult?.tab1_exam?.questions) return
+
+    const questionsCopy = [...allInOneResult.tab1_exam.questions]
+    const targetQ = questionsCopy[qIdx]
+    if (!targetQ) return
+
+    const cleanDesc = cleanImageAlt(imgDesc)
+    const markdownImg = `![${cleanDesc}](${imgUrl})\n\n`
+
+    // 이미 삽입된 이미지인지 중복 검사
+    const alreadyExists =
+      targetQ.questionText?.includes(imgUrl) ||
+      targetQ.passages?.some((p: any) =>
+        (typeof p.content === 'string' && p.content.includes(imgUrl)) ||
+        (Array.isArray(p.paragraphs) && p.paragraphs.some((para: string) => para.includes(imgUrl)))
+      )
+
+    if (alreadyExists) {
+      showNotice('error', '이미 이 문항에 연결된 도표 이미지입니다.')
+      return
+    }
+
+    if (targetQ.passages && targetQ.passages.length > 0) {
+      // 복수 제시문(<자료 1>, <자료 2> 등)이 있는 경우: 아직 이미지가 없는 제시문 우선 매핑
+      let targetPassage = targetQ.passages.find((p: any) => {
+        const text = typeof p.content === 'string' ? p.content : Array.isArray(p.paragraphs) ? p.paragraphs.join('\n') : ''
+        return !text.includes('![')
+      })
+
+      if (!targetPassage) {
+        targetPassage = targetQ.passages[0]
+      }
+
+      if (typeof targetPassage.content === 'string') {
+        targetPassage.content = markdownImg + targetPassage.content
+      } else if (Array.isArray(targetPassage.paragraphs)) {
+        targetPassage.paragraphs.unshift(`![${cleanDesc}](${imgUrl})`)
+      } else {
+        targetPassage.content = markdownImg
+      }
+    } else {
+      targetQ.questionText = markdownImg + (targetQ.questionText || '')
+    }
+
+    setAllInOneResult({
+      ...allInOneResult,
+      tab1_exam: {
+        ...allInOneResult.tab1_exam,
+        questions: questionsCopy,
+      },
+    })
+    showNotice('success', `[문항 ${qIdx + 1}]에 도표 이미지(${cleanDesc})가 성공적으로 연결되었습니다.`)
+  }
+
+  // 특정 문항에서 특정 도표 이미지만 선택 연결 해제
+  const removeImageFromQuestion = (qIdx: number, imgUrlToRemove: string) => {
+    if (!allInOneResult?.tab1_exam?.questions) return
+
+    const questionsCopy = [...allInOneResult.tab1_exam.questions]
+    const targetQ = questionsCopy[qIdx]
+    if (!targetQ) return
+
+    if (targetQ.passages && Array.isArray(targetQ.passages)) {
+      targetQ.passages.forEach((p: any) => {
+        if (typeof p.content === 'string') {
+          p.content = removeImageFromText(p.content, imgUrlToRemove)
+        }
+        if (Array.isArray(p.paragraphs)) {
+          p.paragraphs = p.paragraphs.filter((para: string) => !para.includes(imgUrlToRemove))
+        }
+      })
+    }
+
+    if (targetQ.questionText) {
+      targetQ.questionText = removeImageFromText(targetQ.questionText, imgUrlToRemove)
+    }
+
+    setAllInOneResult({
+      ...allInOneResult,
+      tab1_exam: {
+        ...allInOneResult.tab1_exam,
+        questions: questionsCopy,
+      },
+    })
+    showNotice('success', `[문항 ${qIdx + 1}]의 도표 이미지 연결이 해제되었습니다.`)
+  }
+
+  // 업로드된 이미지 삭제
+  const removeUploadedImage = (id: string) => {
+    setUploadedImages((prev) => prev.filter((img) => img.id !== id))
+  }
 
   // 파일 목록으로부터 전체 텍스트 합산 동기화
   const syncTextFromFiles = (files: typeof attachedFiles) => {
@@ -88,15 +248,22 @@ export default function AllInOneParser({
     setAllInOneDocText(combined)
   }
 
-  // 다중 파일 업로드 핸들러
-  const handleAllInOneFilesUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = e.target.files
-    if (!selectedFiles || selectedFiles.length === 0) return
+  // 공통 파일 업로드 및 텍스트 추출 처리 함수 (클릭 선택 & 드래그 앤 드롭 공용)
+  const processFiles = async (selectedFiles: FileList | File[]) => {
+    const filesArray = Array.from(selectedFiles).filter((file) => {
+      const ext = file.name.split('.').pop()?.toLowerCase()
+      return ext === 'pdf' || ext === 'txt' || ext === 'md' || ext === 'json'
+    })
+
+    if (filesArray.length === 0) {
+      showNotice('error', '지원되는 파일 형식(.pdf, .txt, .md, .json)을 업로드해 주세요.')
+      return
+    }
 
     setIsUploadingFiles(true)
     try {
       const formData = new FormData()
-      Array.from(selectedFiles).forEach((f) => formData.append('files', f))
+      filesArray.forEach((f) => formData.append('files', f))
 
       const res = await fetch('/api/admin/extract-pdf-text', {
         method: 'POST',
@@ -125,7 +292,39 @@ export default function AllInOneParser({
       showNotice('error', `파일 파싱 오류: ${err.message}`)
     } finally {
       setIsUploadingFiles(false)
-      e.target.value = ''
+    }
+  }
+
+  // 다중 파일 클릭 선택 핸들러
+  const handleAllInOneFilesUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files
+    if (!selectedFiles || selectedFiles.length === 0) return
+    await processFiles(selectedFiles)
+    e.target.value = ''
+  }
+
+  // 드래그 앤 드롭 이벤트 핸들러
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isDragging) setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    if (isUploadingFiles) return
+    const droppedFiles = e.dataTransfer.files
+    if (droppedFiles && droppedFiles.length > 0) {
+      await processFiles(droppedFiles)
     }
   }
 
@@ -172,12 +371,18 @@ export default function AllInOneParser({
 
       const data = await res.json()
       if (data.success) {
-        setAllInOneResult(data.data)
-        if (data.data?.tab1_exam) {
+        const parsedData = data.data
+        // 상단에서 미리 첨부한 문제지 PDF가 있다면 탭 1 기출 데이터에 자동 주입
+        if (parsedData?.tab1_exam && manualPdfUrl) {
+          parsedData.tab1_exam.pdf_url = manualPdfUrl
+          parsedData.tab1_exam.pdf_name = manualPdfName
+        }
+        setAllInOneResult(parsedData)
+        if (parsedData?.tab1_exam) {
           setAllInOnePreviewTab('tab1')
-        } else if (data.data?.tab2_trends && data.data.tab2_trends.length > 0) {
+        } else if (parsedData?.tab2_trends && parsedData.tab2_trends.length > 0) {
           setAllInOnePreviewTab('tab2')
-        } else if (data.data?.tab3_scoring) {
+        } else if (parsedData?.tab3_scoring) {
           setAllInOnePreviewTab('tab3')
         }
         showNotice('success', `[${activeFaculty}] 선택된 탭 데이터가 성공적으로 분해·생성되었습니다!`)
@@ -442,9 +647,6 @@ export default function AllInOneParser({
             <span style={{ fontSize: '13px', fontWeight: 800, color: '#1e3a8a' }}>
               생성 및 DB 반영 대상 탭 선택:
             </span>
-            <span style={{ fontSize: '11.5px', color: '#3b82f6', fontWeight: 600 }}>
-              (원하는 탭만 체크하여 선별 생성하거나 기존 데이터를 안전하게 부분 갱신할 수 있습니다)
-            </span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
@@ -476,6 +678,45 @@ export default function AllInOneParser({
               탭 3: 채점기준·루브릭
             </label>
           </div>
+        </div>
+
+        {/* 📄 [상시 노출] 직접 편집한 문제지 원본 PDF 사전 첨부 박스 */}
+        <div style={{
+          marginTop: '14px',
+          padding: '16px',
+          background: '#ffffff',
+          borderRadius: '10px',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <FileText size={15} className="text-rose-600" />
+              <span>직접 편집한 문제지 원본 PDF 첨부 (선택 · 학생 화면 연동)</span>
+            </label>
+            <span style={{ fontSize: '12px', color: '#64748b' }}>
+              * 파싱 전 미리 첨부해 두시면 [탭 1: 기출문제]에 자동 연동되어 함께 저장됩니다.
+            </span>
+          </div>
+          <ExamPdfUploader
+            univId={selectedUniv}
+            pdfUrl={allInOneResult?.tab1_exam?.pdf_url || manualPdfUrl}
+            pdfName={allInOneResult?.tab1_exam?.pdf_name || manualPdfName}
+            onChange={(url, name) => {
+              setManualPdfUrl(url)
+              setManualPdfName(name)
+              if (allInOneResult?.tab1_exam) {
+                setAllInOneResult(prev => {
+                  if (!prev || !prev.tab1_exam) return prev
+                  return {
+                    ...prev,
+                    tab1_exam: { ...prev.tab1_exam, pdf_url: url, pdf_name: name }
+                  }
+                })
+              }
+            }}
+            showNotice={showNotice}
+          />
         </div>
 
         {/* 보고서 전문 입력 패널 */}
@@ -547,16 +788,21 @@ export default function AllInOneParser({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {/* 드래그 앤 드롭 파일 업로드 박스 */}
               <label
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: '30px 20px',
-                  background: isUploadingFiles ? '#eff6ff' : '#ffffff',
-                  border: '2px dashed #93c5fd',
+                  padding: '32px 20px',
+                  background: isDragging ? '#e0f2fe' : isUploadingFiles ? '#eff6ff' : '#ffffff',
+                  border: isDragging ? '2px dashed #2563eb' : '2px dashed #93c5fd',
                   borderRadius: '10px',
                   cursor: isUploadingFiles ? 'wait' : 'pointer',
+                  transform: isDragging ? 'scale(1.01)' : 'none',
+                  boxShadow: isDragging ? '0 4px 16px rgba(37, 99, 235, 0.15)' : 'none',
                   transition: 'all 0.15s ease'
                 }}
               >
@@ -573,6 +819,16 @@ export default function AllInOneParser({
                     <RefreshCw size={20} className="animate-spin" />
                     PDF 문서에서 텍스트를 고속 추출하고 있습니다...
                   </div>
+                ) : isDragging ? (
+                  <>
+                    <UploadCloud size={36} color="#2563eb" className="animate-bounce" style={{ marginBottom: '8px' }} />
+                    <span style={{ fontSize: '15px', fontWeight: 800, color: '#1d4ed8' }}>
+                      파일을 여기에 놓으면 즉시 첨부됩니다!
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#2563eb', marginTop: '4px' }}>
+                      PDF, 텍스트 문서 자동 텍스트 추출 시작
+                    </span>
+                  </>
                 ) : (
                   <>
                     <UploadCloud size={32} color="#3b82f6" style={{ marginBottom: '8px' }} />
@@ -580,7 +836,7 @@ export default function AllInOneParser({
                       선행학습 영향평가서 PDF 또는 텍스트 파일을 이곳에 업로드하세요
                     </span>
                     <span style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                      여러 권의 문서를 동시에 선택하여 한 번에 종합 분석할 수도 있습니다.
+                      마우스로 파일을 끌어다 놓거나(Drag & Drop) 클릭하여 선택할 수 있습니다.
                     </span>
                   </>
                 )}
@@ -621,6 +877,104 @@ export default function AllInOneParser({
                   ))}
                 </div>
               )}
+
+              {/* 📊 도표·그래프 캡처 이미지 첨부 (선택) UI 블록 */}
+              <div style={{
+                marginTop: '8px',
+                padding: '12px 14px',
+                background: '#ffffff',
+                borderRadius: '8px',
+                border: '1px dashed #cbd5e1',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <ImageIcon size={15} className="text-blue-600" />
+                    <span style={{ fontSize: '13px', fontWeight: 800, color: '#1e293b' }}>
+                      도표·그래프 캡처 이미지 첨부 (선택)
+                    </span>
+                    <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                      {uploadedImages.length > 0 ? `(${uploadedImages.length}개 업로드됨)` : '(PDF 내에 그래프·도표가 있는 경우 첨부)'}
+                    </span>
+                  </div>
+                  <label style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 10px',
+                    background: '#eff6ff',
+                    color: '#2563eb',
+                    border: '1px solid #bfdbfe',
+                    borderRadius: '6px',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    cursor: isUploadingImage ? 'wait' : 'pointer'
+                  }}>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,.svg"
+                      style={{ display: 'none' }}
+                      disabled={isUploadingImage}
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files.length > 0) {
+                          processImageFiles(e.target.files)
+                          e.target.value = ''
+                        }
+                      }}
+                    />
+                    {isUploadingImage ? <RefreshCw size={12} className="animate-spin" /> : <UploadCloud size={12} />}
+                    {isUploadingImage ? '업로드 중...' : '+ 캡처 이미지 추가'}
+                  </label>
+                </div>
+
+                {uploadedImages.length === 0 ? (
+                  <p style={{ margin: 0, fontSize: '11.5px', color: '#94a3b8', lineHeight: 1.4 }}>
+                    💡 문제에 함수 그래프나 좌표평면, 통계 도표가 포함되어 있다면 해당 영역을 캡처하여 이곳에 올려두세요. 생성된 문항에 원클릭으로 쏙 들어갑니다.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {uploadedImages.map((img) => (
+                      <div
+                        key={img.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '4px 8px',
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '6px'
+                        }}
+                      >
+                        <img
+                          src={img.url}
+                          alt={img.originalName}
+                          style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '4px', background: '#ffffff', border: '1px solid #cbd5e1' }}
+                        />
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: '#334155', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {img.originalName}
+                          </span>
+                          <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                            {(img.size / 1024).toFixed(1)} KB
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeUploadedImage(img.id)}
+                          style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px 4px', fontSize: '12px' }}
+                          title="이미지 삭제"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <textarea
@@ -721,16 +1075,149 @@ export default function AllInOneParser({
               <p style={{ margin: '0 0 14px', fontSize: '13.5px', color: '#475569' }}>
                 📌 {allInOneResult.tab1_exam.summary}
               </p>
+
+              {/* 문제지 원본 PDF 첨부/관리 */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  📄 문제지 원본 PDF 파일 (선택 · 학생 시험 화면 연동)
+                </label>
+                <ExamPdfUploader
+                  univId={selectedUniv}
+                  pdfUrl={allInOneResult.tab1_exam.pdf_url || ''}
+                  pdfName={allInOneResult.tab1_exam.pdf_name || ''}
+                  onChange={(url, name) => {
+                    setAllInOneResult((prev) => {
+                      if (!prev || !prev.tab1_exam) return prev
+                      return {
+                        ...prev,
+                        tab1_exam: {
+                          ...prev.tab1_exam,
+                          pdf_url: url,
+                          pdf_name: name
+                        }
+                      }
+                    })
+                  }}
+                  showNotice={showNotice}
+                />
+              </div>
               {allInOneResult.tab1_exam.questions && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {allInOneResult.tab1_exam.questions.map((q: any, qIdx: number) => (
-                    <div key={qIdx} style={{ background: '#ffffff', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                      <strong style={{ fontSize: '13px', color: '#1e3a8a', display: 'block', marginBottom: '4px' }}>
-                        {q.label || `문항 ${qIdx + 1}`} ({q.score || '배점 미정'} · {q.charLimit || ''})
-                      </strong>
-                      <p style={{ margin: 0, fontSize: '13px', color: '#1e293b', lineHeight: 1.5 }}>{q.questionText}</p>
-                    </div>
-                  ))}
+                  {allInOneResult.tab1_exam.questions.map((q: any, qIdx: number) => {
+                    // 문항 본문 및 모든 제시문에서 연결된 이미지 목록 추출 (공통 유틸 활용)
+                    const fullPassagesText = (q.passages || []).map((p: any) => (typeof p.content === 'string' ? p.content : '')).join('\n')
+                    const combinedText = `${q.questionText || ''}\n${fullPassagesText}`
+                    const attachedImages = extractImagesFromText(combinedText)
+
+                    return (
+                      <div key={qIdx} style={{ background: '#ffffff', padding: '14px 16px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                          <strong style={{ fontSize: '13px', color: '#1e3a8a' }}>
+                            {q.label || `문항 ${qIdx + 1}`} ({q.score || '배점 미정'} · {q.charLimit || ''})
+                          </strong>
+                          {attachedImages.length > 0 && (
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#15803d', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              📷 도표 이미지 {attachedImages.length}장 연동됨
+                            </span>
+                          )}
+                        </div>
+
+                        <p style={{ margin: 0, fontSize: '13px', color: '#1e293b', lineHeight: 1.5 }}>
+                          {q.questionText}
+                        </p>
+
+                        {/* 도표 이미지가 연결되어 있을 때의 미리보기 카드 목록 (공통 컴포넌트 활용) */}
+                        {attachedImages.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {attachedImages.map((attImg, attIdx) => (
+                              <AttachedImageCard
+                                key={attIdx}
+                                alt={attImg.alt}
+                                url={attImg.url}
+                                onRemove={() => removeImageFromQuestion(qIdx, attImg.url)}
+                              />
+                            ))}
+                          </div>
+                        )}
+
+                        {/* 도표 삽입 도구 바 (복수 이미지 삽입 및 식별 파일명 표시 지원) */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '6px', borderTop: '1px dashed #f1f5f9', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '11.5px', fontWeight: 600, color: '#64748b' }}>
+                            📊 도표 삽입:
+                          </span>
+                          {uploadedImages.length > 0 ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              {uploadedImages.map((img) => {
+                                const isAttached = attachedImages.some(att => att.url === img.url)
+                                const shortName = formatImageFileName(img.originalName, 22)
+
+                                return (
+                                  <button
+                                    key={img.id}
+                                    type="button"
+                                    title={img.originalName}
+                                    onClick={() => {
+                                      if (isAttached) {
+                                        removeImageFromQuestion(qIdx, img.url)
+                                      } else {
+                                        insertImageToQuestion(qIdx, img.url, img.originalName)
+                                      }
+                                    }}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      padding: '4px 9px',
+                                      background: isAttached ? '#f0fdf4' : '#eff6ff',
+                                      color: isAttached ? '#15803d' : '#1d4ed8',
+                                      border: isAttached ? '1px solid #bbf7d0' : '1px solid #bfdbfe',
+                                      borderRadius: '6px',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s ease'
+                                    }}
+                                  >
+                                    <ImageIcon size={11} />
+                                    {isAttached ? `✓ ${shortName} (연결됨)` : `+ ${shortName} 삽입`}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          ) : null}
+
+                          {/* 직접 이 문항에 캡처 이미지 즉시 업로드 & 삽입 */}
+                          <label style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '4px 9px',
+                            background: '#f8fafc',
+                            color: '#475569',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                          }}>
+                            <input
+                              type="file"
+                              accept="image/*,.svg"
+                              style={{ display: 'none' }}
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files.length > 0) {
+                                  processImageFiles(e.target.files, qIdx)
+                                  e.target.value = ''
+                                }
+                              }}
+                            />
+                            <UploadCloud size={11} />
+                            + 이 문항에 새 이미지 직접 첨부
+                          </label>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>

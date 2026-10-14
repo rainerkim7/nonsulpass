@@ -5,11 +5,12 @@
  * @description 논술패스 Lab 메인 랜딩 페이지 (히어로, 서울 주요 18개 대학 그리드, 서비스 소개)
  */
 
-import React from 'react'
+import React, { useState } from 'react'
 import Link from 'next/link'
 import {
   Sparkles,
   Sliders,
+  Award,
   ArrowRight,
   Check,
   TrendingUp,
@@ -19,10 +20,12 @@ import {
 } from 'lucide-react'
 import Brand from '@/components/common/Brand'
 import { SEOUL_UNIVERSITIES } from '@/lib/constants/universities'
+import { useAuth } from '@/components/AuthGate'
+import MySubmissionsModal from '@/components/mypage/MySubmissionsModal'
 
 interface HomePageProps {
   onExam: (univ?: string) => void
-  onReport: () => void
+  onReport: (reportData?: any) => void
   onSelectUniv?: (univId: string, univName: string) => void
 }
 
@@ -31,6 +34,10 @@ export default function HomePage({
   onReport,
   onSelectUniv,
 }: HomePageProps) {
+  // 인증 정보 및 권한 확인
+  const { isAuthenticated, isAdmin, userDisplayName, logout, openAuthModal } = useAuth()
+  const [isMySubmissionsOpen, setIsMySubmissionsOpen] = useState(false)
+
   return (
     <main className="home-shell">
       <header className="home-topbar">
@@ -41,14 +48,62 @@ export default function HomePage({
           <a href="#process">이용 방법</a>
         </nav>
         <div className="home-top-actions">
-          <Link
-            href="/admin"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-lg transition"
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            관리자 콘솔
-          </Link>
-          <button className="home-login">로그인</button>
+          {isAuthenticated ? (
+            <>
+              {/* 내 첨삭 보관함 버튼 */}
+              <button
+                type="button"
+                onClick={() => setIsMySubmissionsOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg transition cursor-pointer"
+                title="내가 제출한 답안과 AI 정밀 채점 리포트 이력 조회"
+              >
+                <Award className="w-3.5 h-3.5" />
+                내 첨삭 보관함
+              </button>
+
+              {/* 관리자 콘솔 바로가기 (admin 전용) */}
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-lg transition"
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                  관리자 콘솔
+                </Link>
+              )}
+
+              {/* 사용자 이름 및 로그아웃 버튼 */}
+              <button
+                type="button"
+                onClick={logout}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 rounded-lg transition cursor-pointer"
+                title="로그아웃"
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${isAdmin ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                <span className="font-semibold text-slate-200">
+                  {isAdmin ? `관리자 (${userDisplayName})` : `${userDisplayName} 학생`}
+                </span>
+                <span className="text-slate-400 text-[11px]">로그아웃</span>
+              </button>
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => openAuthModal('login')}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-200 hover:text-white bg-slate-800/70 hover:bg-slate-700/70 border border-slate-700/60 rounded-lg transition cursor-pointer"
+              >
+                로그인
+              </button>
+              <button
+                type="button"
+                onClick={() => openAuthModal('signup')}
+                className="px-3.5 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-lg shadow-sm transition cursor-pointer"
+              >
+                무료 회원가입
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -246,6 +301,13 @@ export default function HomePage({
         <Brand />
         <span>© 2027 Nonsul Pass Lab. 모든 학습 데이터는 안전하게 보호됩니다.</span>
       </footer>
+
+      {/* 🏆 마이페이지: 내 첨삭 리포트 보관함 모달 */}
+      <MySubmissionsModal
+        isOpen={isMySubmissionsOpen}
+        onClose={() => setIsMySubmissionsOpen(false)}
+        onSelectReport={(report) => onReport(report)}
+      />
     </main>
   )
 }

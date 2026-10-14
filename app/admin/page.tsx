@@ -30,6 +30,7 @@ import RubricsManager, { ScoringRuleRow, RubricRow } from './components/RubricsM
 
 // 중앙 집중 대학 메타데이터 임포트
 import { UNIVERSITIES, UNIVERSITY_FACULTIES, getUniversityName } from '@/lib/constants/universities'
+import { useAuth } from '@/components/AuthGate'
 
 // 브라우저 로컬 스토리지 키 (직전 선택 대학 기억)
 const STORAGE_KEY = 'nonsulpass_admin_selected_univ'
@@ -37,6 +38,9 @@ const STORAGE_KEY = 'nonsulpass_admin_selected_univ'
 function AdminConsoleContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  // 관리자 권한 확인 (admin 계정 여부)
+  const { isAdmin, isLoading: isAuthLoading } = useAuth()
 
   // 1. 현재 선택된 대학 상태: URL 파라미터(?univ=...) -> localStorage -> 'hongik' 순으로 우선 복원
   const paramUniv = searchParams.get('univ')
@@ -182,6 +186,31 @@ function AdminConsoleContent() {
   }, [selectedUniv, fetchExams, fetchTrends, fetchRubrics])
 
   const currentUnivName = getUniversityName(selectedUniv)
+
+  // 관리자 권한 검사: 비관리자(일반 사용자) 계정 접근 차단 가드
+  if (!isAuthLoading && !isAdmin) {
+    return (
+      <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-slate-900/90 border border-red-500/30 rounded-2xl p-8 text-center backdrop-blur-xl shadow-2xl">
+          <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400">
+            <AlertCircle size={28} />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">관리자 전용 접근 제한</h2>
+          <p className="text-sm text-slate-400 leading-relaxed mb-6">
+            이 페이지는 시스템 관리자(admin) 전용 콘솔입니다.<br />
+            일반 사용자 계정으로는 관리자 화면에 접근할 수 없습니다.
+          </p>
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition"
+          >
+            <ArrowLeft size={16} />
+            메인 화면으로 돌아가기
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="admin-shell">

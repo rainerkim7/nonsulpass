@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 400" width="100%" height="100%" style="background:#ffffff; font-family:'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;">
+  <defs>
+    <!-- 화살표 마커 -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#1e293b"/>
+    </marker>
+    <marker id="pointer" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-reverse">
+      <path d="M 0 2 L 6 5 L 0 8 z" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <!-- 테두리 박스 -->
+  <rect x="2" y="2" width="676" height="396" rx="8" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+
+  <!-- 축 정의: 원점 (70, 320) -->
+  <!-- X축 -->
+  <line x1="60" y1="320" x2="620" y2="320" stroke="#1e293b" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text x="630" y="324" font-size="14" font-weight="700" fill="#1e293b" font-style="italic">x</text>
+  <text x="590" y="345" font-size="12" font-weight="600" fill="#475569" text-anchor="end">전염병 발병 후 경과 기간</text>
+
+  <!-- Y축 -->
+  <line x1="70" y1="330" x2="70" y2="40" stroke="#1e293b" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text x="66" y="30" font-size="14" font-weight="700" fill="#1e293b" font-style="italic" text-anchor="middle">y</text>
+  
+  <!-- Y축 레이블 세로 표기 -->
+  <g transform="translate(48, 140)">
+    <text x="0" y="0" font-size="11.5" font-weight="600" fill="#475569" text-anchor="middle">신</text>
+    <text x="0" y="14" font-size="11.5" font-weight="600" fill="#475569" text-anchor="middle">규</text>
+    <text x="0" y="28" font-size="11.5" font-weight="600" fill="#475569" text-anchor="middle">감</text>
+    <text x="0" y="42" font-size="11.5" font-weight="600" fill="#475569" text-anchor="middle">염</text>
+    <text x="0" y="56" font-size="11.5" font-weight="600" fill="#475569" text-anchor="middle">자</text>
+    <text x="0" y="70" font-size="11.5" font-weight="600" fill="#475569" text-anchor="middle">수</text>
+  </g>
+
+  <!-- 원점 O -->
+  <text x="58" y="338" font-size="13" font-weight="700" fill="#1e293b">O</text>
+
+  <!-- 의료체계 수용 능력 수평 점선 (y = 15 레벨: Y=210) -->
+  <line x1="70" y1="210" x2="570" y2="210" stroke="#64748b" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="540" y="200" font-size="12" font-weight="700" fill="#334155" text-anchor="end">의료체계 수용 능력</text>
+
+  <!-- 곡선 1: 방역 조치를 시행하지 않는 경우: y = -3x(x - 6), 정점 (x=3, y=27 -> Y=90), 끝점 x=6 -> X=430 -->
+  <!-- Bezier 근사: (70, 320) -> C (190, -40), (310, -40) -> (430, 320) -->
+  <path d="M 70 320 Q 250 80 430 320" fill="none" stroke="#2563eb" stroke-width="2.2"/>
+  
+  <!-- 곡선 1 설명 포인터 및 텍스트 -->
+  <text x="350" y="115" font-size="12.5" font-weight="700" fill="#1d4ed8" text-anchor="middle">방역 조치를 시행하지 않는 경우</text>
+  <line x1="320" y1="125" x2="270" y2="155" stroke="#334155" stroke-width="1.2" marker-end="url(#pointer)"/>
+
+  <!-- 곡선 2: 방역 조치를 시행하는 경우: y = -x(x - 7), 정점 (x=3.5, y=12.25 -> Y=235), 끝점 x=7 -> X=490 -->
+  <!-- Bezier 근사: (70, 320) -> Q (280, 230) -> (490, 320) -->
+  <path d="M 70 320 Q 280 232 490 320" fill="none" stroke="#059669" stroke-width="2.2"/>
+
+  <!-- 곡선 2 설명 포인터 및 텍스트 -->
+  <text x="440" y="270" font-size="12.5" font-weight="700" fill="#047857" text-anchor="middle">방역 조치를 시행하는 경우</text>
+  <line x1="400" y1="275" x2="350" y2="285" stroke="#334155" stroke-width="1.2" marker-end="url(#pointer)"/>
+
+  <!-- X축 눈금 -->
+  <!-- x = 6 -->
+  <line x1="430" y1="320" x2="430" y2="326" stroke="#475569" stroke-width="1.5"/>
+  <text x="430" y="338" font-size="12" font-weight="600" fill="#475569" text-anchor="middle">6</text>
+
+  <!-- x = 7 -->
+  <line x1="490" y1="320" x2="490" y2="326" stroke="#475569" stroke-width="1.5"/>
+  <text x="490" y="338" font-size="12" font-weight="600" fill="#475569" text-anchor="middle">7</text>
+</svg>

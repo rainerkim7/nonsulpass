@@ -5,7 +5,7 @@
  * @description 관리자 페이지 - 탭 3 배점 체계(scoring_rules) 및 공식 루브릭(university_rubrics) 조회/수정/삭제/신규등록 컴포넌트
  */
 
-import React, { useState } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   Award,
   GraduationCap,
@@ -19,6 +19,7 @@ import {
   ListPlus,
   Layers
 } from 'lucide-react'
+import { UNIVERSITY_EXAM_TRACKS } from '@/lib/constants/universities'
 
 export interface ScoringRuleRow {
   id?: string
@@ -60,6 +61,51 @@ export default function RubricsManager({
   showNotice
 }: RubricsManagerProps) {
   // =========================================================================
+  // 계열별 필터 상태 및 대학별 출제 계열 목록 추출
+  // =========================================================================
+  const availableFaculties = useMemo(() => {
+    if (UNIVERSITY_EXAM_TRACKS[univId]) {
+      return UNIVERSITY_EXAM_TRACKS[univId]
+    }
+    const set = new Set<string>()
+    scoringRules.forEach((r) => {
+      if (r.faculty) set.add(r.faculty)
+    })
+    rubrics.forEach((rub) => {
+      const match = rub.category?.match(/^\[(.*?)\]/)
+      if (match && match[1]) set.add(match[1])
+    })
+    return Array.from(set)
+  }, [univId, scoringRules, rubrics])
+
+  const [facultyFilter, setFacultyFilter] = useState<string>('all')
+
+  useEffect(() => {
+    setFacultyFilter('all')
+  }, [univId])
+
+  // 선택된 계열 기준 필터링된 배점 체계 목록
+  const filteredScoringRules = useMemo(() => {
+    if (facultyFilter === 'all') return scoringRules
+    return scoringRules.filter((r) => {
+      if (!r.faculty) return true
+      return r.faculty === facultyFilter || r.faculty.includes(facultyFilter) || facultyFilter.includes(r.faculty)
+    })
+  }, [scoringRules, facultyFilter])
+
+  // 선택된 계열 기준 필터링된 루브릭 목록
+  const filteredRubrics = useMemo(() => {
+    if (facultyFilter === 'all') return rubrics
+    return rubrics.filter((rub) => {
+      if (!rub.category) return true
+      if (rub.category.includes('[') && rub.category.includes(']')) {
+        return rub.category.includes(facultyFilter)
+      }
+      return true
+    })
+  }, [rubrics, facultyFilter])
+
+  // =========================================================================
   // 1. 배점 체계(Scoring Rule) 모달 상태 및 폼
   // =========================================================================
   const [scoringModalOpen, setScoringModalOpen] = useState<boolean>(false)
@@ -76,11 +122,12 @@ export default function RubricsManager({
   const handleOpenAddScoring = () => {
     setIsEditingScoring(false)
     setScoringId(undefined)
-    setScoringFaculty('인문계열 (공통)')
+    const defaultFac = facultyFilter !== 'all' ? facultyFilter : (availableFaculties[0] || '인문계열 (공통)')
+    setScoringFaculty(defaultFac)
     setScoringChip('공통 평가')
     setScoringScore('총점 100점 (문제 1: 30점 / 문제 2: 35점 / 문제 3: 35점)')
     setScoringSubDesc('입시요강에 명시된 문항별 배점 가중치를 고르게 평가합니다.')
-    setScoringOrder(scoringRules.length + 1)
+    setScoringOrder(filteredScoringRules.length + 1)
     setScoringModalOpen(true)
   }
 
@@ -179,14 +226,15 @@ export default function RubricsManager({
     setIsEditingRubric(false)
     setRubricId(undefined)
     setRubricRatio('30%')
-    setRubricCategory('논리적 정합성 및 논증의 완성도')
+    const prefix = facultyFilter !== 'all' ? `[${facultyFilter}] ` : ''
+    setRubricCategory(`${prefix}논리적 정합성 및 논증의 완성도`)
     setRubricDesc('출제 의도에 부합하는 주장 전개와 논리적 비약 없는 정합성을 평가합니다.')
     setRubricDetails([
       '제시문의 핵심 논지를 왜곡 없이 정확히 파악하였는가?',
       '주장과 근거 간의 인과적 논리 구조가 명확한가?',
       '상반된 관점의 차이점을 다각적으로 대조 분석하였는가?'
     ])
-    setRubricOrder(rubrics.length + 1)
+    setRubricOrder(filteredRubrics.length + 1)
     setRubricModalOpen(true)
   }
 
@@ -307,6 +355,63 @@ export default function RubricsManager({
         </div>
       </div>
 
+      {/* 계열 필터 탭 (단일/복수 계열 모두 대응, 복수 계열 시 직관적 탭 제공) */}
+      {availableFaculties.length > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', padding: '4px 0' }}>
+          <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#475569', marginRight: '4px' }}>
+            🎯 계열 필터:
+          </span>
+          <button
+            type="button"
+            onClick={() => setFacultyFilter('all')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '8px',
+              fontSize: '12.5px',
+              fontWeight: facultyFilter === 'all' ? 800 : 600,
+              border: `1px solid ${facultyFilter === 'all' ? '#1e3a8a' : '#cbd5e1'}`,
+              backgroundColor: facultyFilter === 'all' ? '#1e3a8a' : '#ffffff',
+              color: facultyFilter === 'all' ? '#ffffff' : '#475569',
+              cursor: 'pointer',
+              transition: 'all 0.15s'
+            }}
+          >
+            전체 (배점 {scoringRules.length} / 루브릭 {rubrics.length})
+          </button>
+          {availableFaculties.map((fac) => {
+            const scoringCount = scoringRules.filter((r) => {
+              if (!r.faculty) return false
+              return r.faculty === fac || r.faculty.includes(fac) || fac.includes(r.faculty)
+            }).length
+            const rubricCount = rubrics.filter((rub) => {
+              if (!rub.category) return false
+              return rub.category.includes(fac)
+            }).length
+            const isSelected = facultyFilter === fac
+            return (
+              <button
+                key={fac}
+                type="button"
+                onClick={() => setFacultyFilter(fac)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '8px',
+                  fontSize: '12.5px',
+                  fontWeight: isSelected ? 800 : 600,
+                  border: `1px solid ${isSelected ? '#1e3a8a' : '#cbd5e1'}`,
+                  backgroundColor: isSelected ? '#1e3a8a' : '#ffffff',
+                  color: isSelected ? '#ffffff' : '#475569',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s'
+                }}
+              >
+                {fac} (배점 {scoringCount} / 루브릭 {rubricCount})
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="admin-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '180px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#64748b', fontSize: '14px' }}>
@@ -324,7 +429,7 @@ export default function RubricsManager({
               <div>
                 <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <GraduationCap className="text-blue-600" size={18} />
-                  1. 모집단위별 문항 배점 체계 ({scoringRules.length}건)
+                  1. 모집단위별 문항 배점 체계 ({filteredScoringRules.length}건)
                 </h4>
                 <span style={{ fontSize: '12.5px', color: '#64748b' }}>
                   단과대별 배점 가중치 및 문항별 점수 배분 공식입니다.
@@ -341,10 +446,12 @@ export default function RubricsManager({
               </button>
             </div>
 
-            {scoringRules.length === 0 ? (
+            {filteredScoringRules.length === 0 ? (
               <div style={{ padding: '28px', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1', textAlign: 'center' }}>
                 <p style={{ margin: 0, fontSize: '13.5px', color: '#64748b', fontWeight: 600 }}>
-                  등록된 모집단위별 배점 체계가 없습니다.
+                  {facultyFilter !== 'all'
+                    ? `선택하신 [${facultyFilter}]에 등록된 배점 체계가 없습니다.`
+                    : '등록된 모집단위별 배점 체계가 없습니다.'}
                 </p>
                 <button
                   type="button"
@@ -352,12 +459,12 @@ export default function RubricsManager({
                   className="admin-btn-secondary"
                   style={{ marginTop: '10px', fontSize: '12px' }}
                 >
-                  <Plus size={13} /> 배점 체계 항목 추가
+                  <Plus size={13} /> {facultyFilter !== 'all' ? `[${facultyFilter}] 배점 체계 추가` : '배점 체계 항목 추가'}
                 </button>
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
-                {scoringRules.map((rule, idx) => (
+                {filteredScoringRules.map((rule, idx) => (
                   <div
                     key={rule.id || idx}
                     style={{
@@ -459,7 +566,7 @@ export default function RubricsManager({
               <div>
                 <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#1e293b', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Sparkles className="text-blue-600" size={18} />
-                  2. 출제위원회 공식 채점 기준표 (루브릭 보드) ({rubrics.length}건)
+                  2. 출제위원회 공식 채점 기준표 (루브릭 보드) ({filteredRubrics.length}건)
                 </h4>
                 <span style={{ fontSize: '12.5px', color: '#64748b' }}>
                   평가 영역별 반영 비율, 평가 개요 및 세부 감점 방지 원칙입니다.
@@ -476,10 +583,12 @@ export default function RubricsManager({
               </button>
             </div>
 
-            {rubrics.length === 0 ? (
+            {filteredRubrics.length === 0 ? (
               <div style={{ padding: '32px', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1', textAlign: 'center' }}>
                 <p style={{ margin: 0, fontSize: '13.5px', color: '#64748b', fontWeight: 600 }}>
-                  등록된 공식 채점 기준표(루브릭)가 없습니다.
+                  {facultyFilter !== 'all'
+                    ? `선택하신 [${facultyFilter}]에 등록된 공식 채점 기준표(루브릭)가 없습니다.`
+                    : '등록된 공식 채점 기준표(루브릭)가 없습니다.'}
                 </p>
                 <button
                   type="button"
@@ -487,12 +596,12 @@ export default function RubricsManager({
                   className="admin-btn-secondary"
                   style={{ marginTop: '10px', fontSize: '12px' }}
                 >
-                  <Plus size={13} /> 첫 번째 루브릭 평가 항목 추가
+                  <Plus size={13} /> {facultyFilter !== 'all' ? `[${facultyFilter}] 루브릭 추가` : '첫 번째 루브릭 평가 항목 추가'}
                 </button>
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-                {rubrics.map((item, idx) => (
+                {filteredRubrics.map((item, idx) => (
                   <div
                     key={item.id || idx}
                     style={{
