@@ -32,7 +32,8 @@ import {
   ChevronUp,
   ChevronDown,
   FileUp,
-  RefreshCw
+  RefreshCw,
+  Coins
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Brand from '@/components/common/Brand'
@@ -43,6 +44,8 @@ import type { GradingReportData } from '@/types/grading'
 import ManuscriptModal from './ManuscriptModal'
 import ExamInlineEditor from './admin/ExamInlineEditor'
 import PromptInspectorModal from './PromptInspectorModal'
+import PassPurchaseModal from '@/components/payment/PassPurchaseModal'
+import { useUserPass } from '@/lib/use-user-pass'
 import { Terminal } from 'lucide-react'
 
 /**
@@ -203,7 +206,23 @@ export default function ExamWorkspace({
   onHome,
 }: ExamWorkspaceProps) {
   // 로그인 사용자 및 관리자 권한 확인
-  const { isAdmin, user, userDisplayName } = useAuth()
+  const { isAdmin, user, userDisplayName, openAuthModal } = useAuth()
+
+  // 현재 응시 중인 대학명 (props와 동기화)
+  const currentUniv = selectedUniv || (selectedExamId?.startsWith('khu') ? '경희대학교' : selectedExamId?.startsWith('dongguk') ? '동국대학교' : '홍익대학교')
+
+  // 대학 패스 및 잔여 채점 크레딧 상태 관리
+  const {
+    userPass,
+    remainingCredits,
+    hasActivePass,
+    consumeCredit,
+    grantPass,
+    isPurchaseModalOpen,
+    openPurchaseModal,
+    closePurchaseModal,
+  } = useUserPass(currentUniv)
+
   // 관리자 전용 인라인 문제 편집 모드 활성화 상태
   const [isEditMode, setIsEditMode] = useState<boolean>(false)
   // 문항 데이터 DB 저장 진행 상태
@@ -220,8 +239,6 @@ export default function ExamWorkspace({
   const [isUploadingPdf, setIsUploadingPdf] = useState<boolean>(false)
   const pdfInputRef = useRef<HTMLInputElement | null>(null)
 
-  // 현재 응시 중인 대학명 (props와 동기화)
-  const currentUniv = selectedUniv || (selectedExamId?.startsWith('khu') ? '경희대학교' : '홍익대학교')
   // 문제 탭 전환 상태 (q1, q2, q3 등 동적 지원)
   const [activeQuestion, setActiveQuestion] = useState<string>(initialQuestion || 'q1')
   // 문제별 작성 답안 독립 관리 (공백 초기화)
@@ -850,10 +867,47 @@ export default function ExamWorkspace({
 
   // Gemini API를 호출하여 공식 채점 기준표에 따라 실시간 채점을 수행하는 핸들러
   const handleSubmitAndGrade = async () => {
+    // 1. 비로그인 게스트인 경우: 로그인 모달 호출
+    if (!user) {
+      openAuthModal('login')
+      alert('AI 정밀 첨삭 및 채점 리포트를 발급받으시려면 먼저 로그인해 주세요.')
+      return
+    }
+
+    // 2. 답안 최소 글자 수 확인
     const trimmed = currentAnswer.trim()
     if (!trimmed || trimmed.length < 30) {
       alert('답안을 최소 30자 이상 작성하신 후 정밀 채점을 요청해 주세요.\n(원활한 채점을 위해 모범답안을 불러오거나 직접 서술해 보세요.)')
       return
+    }
+
+    // 3. 관리자(admin)가 아닌 일반 학생의 경우 크레딧 및 어뷰징(쿨다운/5회 상한) 검증
+    if (!isAdmin) {
+      // 잔여 크레딧이 0이거나 패스가 없는 경우 결제 모달 오픈
+      if (remainingCredits <= 0) {
+        openPurchaseModal()
+        return
+      }
+
+      // DB 원자적 크레딧 차감 RPC 호출
+      const creditResult = await consumeCredit(selectedExamId || 'common', activeQuestion)
+      if (!creditResult.success) {
+        if (creditResult.code === 'COOLDOWN_ACTIVE') {
+          const mins = Math.ceil((creditResult.cooldown_remaining_seconds || 60) / 60)
+          alert(`[제출 쿨다운 안내]\n이전 첨삭 리포트를 충분히 복습하고 개선할 수 있도록 대기 시간(약 ${mins}분 남음)이 적용 중입니다. 피드백을 반영하여 답안을 퇴고해 보세요!`)
+          return
+        }
+        if (creditResult.code === 'MAX_ATTEMPTS_EXCEEDED') {
+          alert(`[문항 한도 초과]\n해당 문항은 이미 최대 5회 채점을 완료하여 마스터하셨습니다.\n다른 기출/모의 문항에 도전해 보세요!`)
+          return
+        }
+        if (creditResult.code === 'NO_CREDITS') {
+          openPurchaseModal()
+          return
+        }
+        alert(creditResult.message || '채점 크레딧 확인 중 오류가 발생했습니다.')
+        return
+      }
     }
 
     setIsGrading(true)
@@ -950,6 +1004,36 @@ export default function ExamWorkspace({
       <header className="topbar">
         <Brand onHome={onHome} />
         <div className="topbar-controls">
+          {/* 대학 패스 크레딧 상태 표시 */}
+          {isAdmin ? (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 text-xs font-semibold">
+              <Sparkles size={14} className="text-amber-400" />
+              <span>관리자 (무제한)</span>
+            </div>
+          ) : user ? (
+            <button
+              type="button"
+              onClick={openPurchaseModal}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                remainingCredits > 0
+                  ? 'bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/35 text-blue-300'
+                  : 'bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/35 text-amber-300 animate-pulse'
+              }`}
+              title="클릭하여 이용권 확인 및 채점권 추가 충전"
+            >
+              <Coins size={14} className={remainingCredits > 0 ? 'text-blue-400' : 'text-amber-400'} />
+              <span>{currentUniv} 크레딧: <strong>{remainingCredits}회</strong></span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => openAuthModal('login')}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-300 text-xs font-semibold transition cursor-pointer"
+            >
+              <span>로그인 후 응시</span>
+            </button>
+          )}
+
           <div className="mode-toggle">
             <button className="active">응시 모드</button>
             <button onClick={() => onReport()}>리포트</button>
@@ -1686,6 +1770,14 @@ export default function ExamWorkspace({
           </div>
         </div>
       )}
+
+      {/* 💳 대학별 30일 마스터 패스 및 채점권 결제 모달 */}
+      <PassPurchaseModal
+        isOpen={isPurchaseModalOpen}
+        onClose={closePurchaseModal}
+        university={currentUniv}
+        onGrantPass={grantPass}
+      />
     </main>
   )
 }

@@ -16,12 +16,15 @@ import {
   TrendingUp,
   GraduationCap,
   FileText,
-  Lightbulb
+  Lightbulb,
+  Coins
 } from 'lucide-react'
 import Brand from '@/components/common/Brand'
 import { SEOUL_UNIVERSITIES } from '@/lib/constants/universities'
 import { useAuth } from '@/components/AuthGate'
 import MySubmissionsModal from '@/components/mypage/MySubmissionsModal'
+import PassPurchaseModal from '@/components/payment/PassPurchaseModal'
+import { useUserPass } from '@/lib/use-user-pass'
 
 interface HomePageProps {
   onExam: (univ?: string) => void
@@ -37,6 +40,9 @@ export default function HomePage({
   // 인증 정보 및 권한 확인
   const { isAuthenticated, isAdmin, userDisplayName, logout, openAuthModal } = useAuth()
   const [isMySubmissionsOpen, setIsMySubmissionsOpen] = useState(false)
+  const [isPassModalOpen, setIsPassModalOpen] = useState(false)
+  const [selectedPassUniv, setSelectedPassUniv] = useState('홍익대학교')
+  const { grantPass } = useUserPass(selectedPassUniv)
 
   return (
     <main className="home-shell">
@@ -48,6 +54,24 @@ export default function HomePage({
           <a href="#process">이용 방법</a>
         </nav>
         <div className="home-top-actions">
+          {/* 대학 패스 멤버십 안내 버튼 */}
+          <button
+            type="button"
+            onClick={() => {
+              if (!isAuthenticated) {
+                openAuthModal('login')
+              } else {
+                setSelectedPassUniv('홍익대학교')
+                setIsPassModalOpen(true)
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg transition cursor-pointer"
+            title="대학별 30일 마스터 패스 (15개 시험 + 30회 채점)"
+          >
+            <Coins className="w-3.5 h-3.5 text-amber-400" />
+            <span>대학 패스 (19,800원)</span>
+          </button>
+
           {isAuthenticated ? (
             <>
               {/* 내 첨삭 보관함 버튼 */}
@@ -307,6 +331,14 @@ export default function HomePage({
         isOpen={isMySubmissionsOpen}
         onClose={() => setIsMySubmissionsOpen(false)}
         onSelectReport={(report) => onReport(report)}
+      />
+
+      {/* 💳 대학별 30일 마스터 패스 결제 모달 */}
+      <PassPurchaseModal
+        isOpen={isPassModalOpen}
+        onClose={() => setIsPassModalOpen(false)}
+        university={selectedPassUniv}
+        onGrantPass={grantPass}
       />
     </main>
   )
