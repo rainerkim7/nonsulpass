@@ -108,9 +108,17 @@ export function normalizeQuestionsData(rawQuestions: any, examMeta?: any): Quest
       // 실제 시험지 원칙: 임의의 소제목(예: "[가치 있는 기록...]")을 제거하고 오직 시험지 고유 식별 번호만 유지
       let rawLabel = q.label || ''
       if (!rawLabel && q.title) {
-        rawLabel = q.title.split('.')[0].replace(/【|】/g, '').trim()
+        // 【논제 Ⅰ】, 【문제 1】, [문제 1] 등의 대괄호 안 식별자 우선 추출
+        const bracketMatch = q.title.match(/【(.*?)】|\[(.*?)\]/)
+        if (bracketMatch) {
+          rawLabel = (bracketMatch[1] || bracketMatch[2] || '').trim()
+        } else {
+          rawLabel = q.title.split('.')[0].replace(/【|】/g, '').trim()
+        }
       }
-      if (!rawLabel) rawLabel = `문제 ${idx + 1}`
+      if (!rawLabel || rawLabel.length > 15) {
+        rawLabel = `문제 ${idx + 1}`
+      }
       const cleanLabel = rawLabel.replace(/\s*[\.·]?\s*\[.*?\]/g, '').trim()
       const titleNumber = cleanLabel.startsWith('【') ? cleanLabel : `【${cleanLabel.replace(/문항/g, '문제')}】`
 

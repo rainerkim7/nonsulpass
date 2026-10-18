@@ -42,11 +42,12 @@ import { supabase } from '@/lib/supabase'
 import { getQuestionsData, fetchExamQuestionsFromDb, QuestionsMap } from '@/lib/exam-helper'
 import type { GradingReportData } from '@/types/grading'
 import ManuscriptModal from './ManuscriptModal'
+import HandwritingOcrModal from './HandwritingOcrModal'
 import ExamInlineEditor from './admin/ExamInlineEditor'
 import PromptInspectorModal from './PromptInspectorModal'
 import PassPurchaseModal from '@/components/payment/PassPurchaseModal'
 import { useUserPass } from '@/lib/use-user-pass'
-import { Terminal } from 'lucide-react'
+import { Terminal, Camera } from 'lucide-react'
 
 /**
  * 제시문 및 모범답안 단락 포맷팅 렌더러
@@ -247,6 +248,8 @@ export default function ExamWorkspace({
   const [showRubricModal, setShowRubricModal] = useState(false)
   // ▦ 200자 정통 원고지 팝업 모달 상태
   const [showManuscriptModal, setShowManuscriptModal] = useState<boolean>(false)
+  // 📷 손글씨/원고지 사진 다중 업로드 및 Gemini AI 텍스트 변환(OCR) 모달 상태
+  const [showOcrModal, setShowOcrModal] = useState<boolean>(false)
   // 🔍 관리자 전용 채점 프롬프트 실시간 검사 및 튜닝 모달 상태
   const [showPromptInspector, setShowPromptInspector] = useState<boolean>(false)
 
@@ -1095,8 +1098,7 @@ export default function ExamWorkspace({
             <div style={{ display: 'flex', gap: '28px' }}>
               {Object.keys(questionsData)
                 .filter(k => questionsData[k] && questionsData[k].passages)
-                .map(qKey => {
-                  const qItem = questionsData[qKey]
+                .map((qKey, idx) => {
                   const isAnswered = (answers[qKey] || '').trim().length > 0
                   return (
                     <button
@@ -1104,7 +1106,7 @@ export default function ExamWorkspace({
                       className={activeQuestion === qKey ? 'active' : ''}
                       onClick={() => setActiveQuestion(qKey)}
                     >
-                      {qItem.label || `문제 ${qKey.replace('q', '')}`} {isAnswered && <span className="tab-check"><Check /></span>}
+                      문제 {idx + 1} {isAnswered && <span className="tab-check"><Check /></span>}
                     </button>
                   )
                 })}
@@ -1367,47 +1369,9 @@ export default function ExamWorkspace({
           <div className="editor-heading">
             <div>
               <p className="eyebrow">ANSWER SHEET · 실전 답안 에디터</p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-                <h2 className="editor-main-title">나의 답안 작성</h2>
-                {/* ▦ 실전 원고지 (400자 / 800자 / 1000자 선택형) 팝업 작성기 버튼 */}
-                <button
-                  type="button"
-                  onClick={() => setShowManuscriptModal(true)}
-                  className="manuscript-open-btn"
-                  title="대학 논술 실전 원고지(400자·800자·1,000자) 팝업 에디터 열기 (한 칸 정밀 입력)"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '5px 14px',
-                    borderRadius: '8px',
-                    border: '1.5px solid #86efac',
-                    backgroundColor: '#f0fdf4',
-                    color: '#166534',
-                    fontSize: '12.5px',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    boxShadow: '0 1px 3px rgba(22, 101, 52, 0.08)',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  <span style={{ fontSize: '13px' }}>▦</span>
-                  <span>실전 원고지 작성</span>
-                  <span style={{ fontSize: '10.5px', backgroundColor: '#dcfce7', color: '#15803d', padding: '1px 5px', borderRadius: '4px' }}>
-                    400·800·1000자 선택
-                  </span>
-                </button>
-              </div>
+              <h2 className="editor-main-title">나의 답안 작성</h2>
             </div>
             <div className="editor-top-actions">
-              <button
-                type="button"
-                className="model-answer-btn"
-                onClick={() => setShowModelModal(true)}
-                title={`${currentQ.label} 공식 모범답안 보기`}
-              >
-                <BookOpen size={14} /> 모범답안 보기
-              </button>
               <div className="editor-counts">
                 <span className="count-badge active">
                   공백 제외 <strong>{currentAnswer.replace(/\s/g, '').length}</strong>자
@@ -1416,7 +1380,26 @@ export default function ExamWorkspace({
                   공백 포함 {currentAnswer.length}자
                 </span>
                 <span className="count-rule">
-                  규정: 700~900자 (800±100자)
+                  규정: {currentQ.limit || '700~900자 (800±100자)'}
+                </span>
+                <span
+                  className="save-state-badge"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '11.5px',
+                    color: '#16a34a',
+                    fontWeight: 600,
+                    backgroundColor: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    padding: '2px 8px',
+                    borderRadius: '6px'
+                  }}
+                  title="답안이 실시간으로 자동 보존되고 있습니다"
+                >
+                  <Check size={12} strokeWidth={2.5} />
+                  <span>실시간 자동 저장 중</span>
                 </span>
               </div>
             </div>
@@ -1435,13 +1418,66 @@ export default function ExamWorkspace({
             />
           </div>
 
-          <div className="editor-footer">
-            <div className="save-state">
-              <Check />
-              <span>실시간 자동 저장 중</span>
-              <small>방금 전</small>
+          <div className="editor-footer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+            {/* 최좌측 그룹: 원고지 작성 & 사진 입력 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {/* ▦ 원고지 작성 버튼 */}
+              <button
+                type="button"
+                onClick={() => setShowManuscriptModal(true)}
+                className="editor-btn-secondary"
+                title="대학 논술 실전 원고지(400자·800자·1,000자) 팝업 에디터 열기"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  color: '#166534',
+                  borderColor: '#86efac',
+                  backgroundColor: '#f0fdf4',
+                  fontWeight: 600
+                }}
+              >
+                <span style={{ fontSize: '13px' }}>▦</span>
+                <span>원고지 작성</span>
+              </button>
+
+              {/* 📷 사진 입력 버튼 */}
+              <button
+                type="button"
+                onClick={() => setShowOcrModal(true)}
+                className="editor-btn-secondary"
+                title="실제 원고지나 노트에 손글씨로 작성한 글을 폰 카메라로 찍어 올리면 Gemini AI가 텍스트로 자동 변환합니다"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  color: '#4338ca',
+                  borderColor: '#c7d2fe',
+                  backgroundColor: '#eef2ff',
+                  fontWeight: 600
+                }}
+              >
+                <Camera size={14} />
+                <span>사진 입력</span>
+              </button>
             </div>
-            <div className="editor-actions">
+
+            {/* 최우측 그룹: 모범 답안 & 답안 복사 & 지우기 */}
+            <div className="editor-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                className="editor-btn-secondary"
+                onClick={() => setShowModelModal(true)}
+                title={`${currentQ.label} 공식 모범 답안 보기`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}
+              >
+                <BookOpen size={14} />
+                <span>모범 답안</span>
+              </button>
               <button
                 type="button"
                 className="editor-btn-secondary"
@@ -1710,6 +1746,23 @@ export default function ExamWorkspace({
         onChange={handleAnswerChange}
         questionLabel={currentQ.label || '문항 1'}
         targetLimit={currentQ.limit || '800±100자'}
+      />
+
+      {/* 📷 손글씨/원고지 사진 다중 업로드 및 Gemini AI 텍스트 변환(OCR) 팝업 모달 */}
+      <HandwritingOcrModal
+        isOpen={showOcrModal}
+        onClose={() => setShowOcrModal(false)}
+        onApplyText={(text, mode) => {
+          if (mode === 'append') {
+            const separator = currentAnswer.trim() ? '\n\n' : ''
+            handleAnswerChange(currentAnswer + separator + text)
+          } else {
+            handleAnswerChange(text)
+          }
+        }}
+        currentAnswer={currentAnswer}
+        questionLabel={currentQ.label || '문항 1'}
+        charLimit={currentQ.limit || '800±100자'}
       />
 
       {/* AI 채점 진행 오버레이 모달 */}
