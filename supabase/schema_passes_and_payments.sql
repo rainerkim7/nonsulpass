@@ -74,7 +74,7 @@ DECLARE
   v_attempt_count INT := 0;
   v_last_submitted TIMESTAMPTZ;
   v_elapsed_seconds INT;
-  v_cooldown_limit INT := 900; -- 15분 (900초) 쿨다운
+  v_cooldown_limit INT := 180; -- 3분 (180초) 쿨다운 (개발 테스트용 단축 설정)
   v_max_attempts INT := 5;     -- 문항당 최대 5회 상한
 BEGIN
   -- 1) 문항별 시도 기록 조회 및 어뷰징(쿨다운 / 최대횟수) 검증
@@ -95,7 +95,7 @@ BEGIN
     );
   END IF;
 
-  -- 1-2) 15분 쿨다운 검증 (기존 제출 기록이 있는 경우에만)
+  -- 1-2) 3분 쿨다운 검증 (기존 제출 기록이 있는 경우에만)
   IF v_last_submitted IS NOT NULL THEN
     v_elapsed_seconds := EXTRACT(EPOCH FROM (now() - v_last_submitted))::INT;
     IF v_elapsed_seconds < v_cooldown_limit THEN

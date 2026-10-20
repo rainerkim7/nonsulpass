@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react'
-import { X, Award, Calendar, FileText, ChevronRight, Trash2, Loader2, Sparkles, AlertCircle } from 'lucide-react'
+import { X, Award, Calendar, FileText, ChevronRight, Trash2, Loader2, Sparkles, AlertCircle, Copy, ChevronDown, ChevronUp } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
 import type { GradingReportData } from '@/types/grading'
@@ -40,6 +40,8 @@ export default function MySubmissionsModal({
   const [submissions, setSubmissions] = useState<SubmissionItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [expandedAnswerId, setExpandedAnswerId] = useState<string | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   // 사용자의 제출 이력 조회
   useEffect(() => {
@@ -220,106 +222,217 @@ export default function MySubmissionsModal({
                 })
 
                 const isPass = item.total_score >= 82
+                const isExpanded = expandedAnswerId === item.id
 
                 return (
                   <div
                     key={item.id}
-                    onClick={() => {
-                      onSelectReport(item.grading_report)
-                      onClose()
-                    }}
                     style={{
                       backgroundColor: '#ffffff',
-                      borderRadius: '12px',
-                      padding: '16px 18px',
+                      borderRadius: '14px',
                       border: '1px solid #e2e8f0',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
                       transition: 'all 0.15s ease',
                       boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = '#93c5fd'
-                      e.currentTarget.style.backgroundColor = '#f8faff'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#e2e8f0'
-                      e.currentTarget.style.backgroundColor = '#ffffff'
+                      overflow: 'hidden',
                     }}
                   >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: 800,
-                            padding: '2px 8px',
-                            borderRadius: '6px',
-                            backgroundColor: '#eff6ff',
-                            color: '#1d4ed8',
-                            border: '1px solid #bfdbfe',
-                          }}
-                        >
-                          {item.university}
-                        </span>
-                        <strong style={{ fontSize: '14px', color: '#0f172a' }}>
-                          {item.exam_title}
-                        </strong>
-                        <span style={{ fontSize: '13px', fontWeight: 700, color: '#475569' }}>
-                          {item.question_label}
-                        </span>
+                    {/* 카드 헤더 영역 */}
+                    <div
+                      style={{
+                        padding: '16px 18px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        backgroundColor: isExpanded ? '#f8faff' : '#ffffff',
+                        borderBottom: isExpanded ? '1px solid #e2e8f0' : 'none',
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              backgroundColor: '#eff6ff',
+                              color: '#1d4ed8',
+                              border: '1px solid #bfdbfe',
+                            }}
+                          >
+                            {item.university}
+                          </span>
+                          <strong style={{ fontSize: '14.5px', color: '#0f172a' }}>
+                            {item.exam_title}
+                          </strong>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: '#475569' }}>
+                            {item.question_label}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#64748b' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Calendar size={13} /> {formattedDate}
+                          </span>
+                          <span>·</span>
+                          <span>작성 분량: <strong>{item.char_count}</strong>자</span>
+                        </div>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '12px', color: '#64748b' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          <Calendar size={13} /> {formattedDate}
-                        </span>
-                        <span>·</span>
-                        <span>작성 분량: {item.char_count}자</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: '2px', justifyContent: 'flex-end' }}>
+                            <span style={{ fontSize: '20px', fontWeight: 900, color: isPass ? '#1d4ed8' : '#e11d48' }}>
+                              {item.total_score}
+                            </span>
+                            <span style={{ fontSize: '12px', color: '#94a3b8' }}>/ 100점</span>
+                          </div>
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              color: isPass ? '#15803d' : '#b45309',
+                            }}
+                          >
+                            {item.status_verdict}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => handleDelete(item.id, e)}
+                          title="이력 삭제"
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#94a3b8',
+                            cursor: 'pointer',
+                            padding: '6px',
+                            borderRadius: '6px',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                          onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '2px', justifyContent: 'flex-end' }}>
-                          <span style={{ fontSize: '20px', fontWeight: 900, color: isPass ? '#1d4ed8' : '#e11d48' }}>
-                            {item.total_score}
-                          </span>
-                          <span style={{ fontSize: '12px', color: '#94a3b8' }}>/ 100점</span>
-                        </div>
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            color: isPass ? '#15803d' : '#b45309',
-                          }}
-                        >
-                          {item.status_verdict}
-                        </span>
-                      </div>
+                    {/* 카드 액션 버튼 바: [작성 답안 보기 / 접기] vs [채점 리포트 보기] */}
+                    <div
+                      style={{
+                        padding: '10px 18px',
+                        backgroundColor: '#fafbfc',
+                        borderTop: isExpanded ? 'none' : '1px solid #f1f5f9',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setExpandedAnswerId(isExpanded ? null : item.id)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          backgroundColor: isExpanded ? '#e2e8f0' : '#ffffff',
+                          color: '#334155',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <FileText size={13} color="#2563eb" />
+                        {isExpanded ? '작성 답안 접기' : '작성 답안 보기'}
+                        {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                      </button>
 
                       <button
                         type="button"
-                        onClick={(e) => handleDelete(item.id, e)}
-                        title="이력 삭제"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#94a3b8',
-                          cursor: 'pointer',
-                          padding: '6px',
-                          borderRadius: '6px',
+                        onClick={() => {
+                          onSelectReport(item.grading_report)
+                          onClose()
                         }}
-                        onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-                        onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '6px 16px',
+                          borderRadius: '8px',
+                          backgroundColor: '#0f172a',
+                          color: '#ffffff',
+                          border: 'none',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
                       >
-                        <Trash2 size={16} />
+                        <Sparkles size={13} color="#93c5fd" />
+                        채점 리포트 보기
+                        <ChevronRight size={13} />
                       </button>
-
-                      <ChevronRight size={18} color="#94a3b8" />
                     </div>
+
+                    {/* 펼쳐진 수험생 작성 답안 영역 */}
+                    {isExpanded && (
+                      <div
+                        style={{
+                          padding: '16px 18px',
+                          backgroundColor: '#ffffff',
+                          borderTop: '1px solid #e2e8f0',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 800, color: '#475569' }}>
+                            제출된 답안 원문 ({item.char_count}자)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(item.student_answer)
+                              setCopiedId(item.id)
+                              setTimeout(() => setCopiedId(null), 2000)
+                            }}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              backgroundColor: '#f1f5f9',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '11.5px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Copy size={12} /> {copiedId === item.id ? '복사 완료!' : '답안 복사'}
+                          </button>
+                        </div>
+                        <div
+                          style={{
+                            padding: '14px 16px',
+                            borderRadius: '10px',
+                            backgroundColor: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            fontSize: '13.5px',
+                            lineHeight: 1.75,
+                            color: '#1e293b',
+                            whiteSpace: 'pre-wrap',
+                            maxHeight: '260px',
+                            overflowY: 'auto',
+                          }}
+                        >
+                          {item.student_answer || '(저장된 답안 내용이 없습니다.)'}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
               })}

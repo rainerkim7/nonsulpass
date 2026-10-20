@@ -88,3 +88,16 @@ export function getUniversityName(univId: string): string {
 export function getUniversityTracks(univId: string): string[] {
   return UNIVERSITY_EXAM_TRACKS[univId] || ['인문계열 (공통)']
 }
+
+/**
+ * 한글 대학명으로 대학 ID 조회
+ */
+export function getUniversityId(name: string): string {
+  if (!name) return 'hongik'
+  const cleanName = name.replace(/대학교|여자대|외국어대|과기대/, '').trim()
+  const found = SEOUL_UNIVERSITIES.find(
+    (u) => u.name === name || u.name.includes(cleanName) || name.includes(u.name.slice(0, 2))
+  )
+  return found ? found.id : 'hongik'
+}
+

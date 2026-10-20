@@ -162,3 +162,152 @@ export function useUserPass(university?: string) {
     closePurchaseModal: () => setIsPurchaseModalOpen(false)
   }
 }
+
+/**
+ * 로그인한 사용자가 구매한 모든 대학의 활성 패스 및 크레딧 목록을 종합 조회하는 훅
+ */
+export function useAllUserPasses() {
+  const { user } = useAuth()
+  const [allPasses, setAllPasses] = useState<UserPass[]>([])
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+
+  const fetchAllPasses = useCallback(async () => {
+    if (!user) {
+      setAllPasses([])
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      setIsLoading(true)
+      const nowIso = new Date().toISOString()
+      const { data, error } = await supabase
+        .from('user_passes')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .gt('expires_at', nowIso)
+        .order('expires_at', { ascending: true })
+
+      if (error) {
+        console.warn('[useAllUserPasses] 패스 전체 조회 오류:', error.message)
+        setAllPasses([])
+      } else {
+        setAllPasses((data as UserPass[]) || [])
+      }
+    } catch (err) {
+      console.error('[useAllUserPasses] 예외 발생:', err)
+      setAllPasses([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    fetchAllPasses()
+  }, [fetchAllPasses])
+
+  /**
+   * 여러 대학에 대해 30일 마스터 패스를 한 번에 일괄 구매 및 DB 부여하는 함수
+   */
+  const grantMultiplePasses = async (
+    universities: string[],
+    passType: PassType = 'standard_30',
+    credits: number = 30,
+    periodDays: number = 30
+  ): Promise<boolean> => {
+    if (!user || universities.length === 0) return false
+
+    try {
+      const now = new Date()
+      const expiresAt = new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000).toISOString()
+
+      const records = universities.map((univ) => ({
+        user_id: user.id,
+        university: univ,
+        total_credits: credits,
+        remaining_credits: credits,
+        pass_type: passType,
+        starts_at: now.toISOString(),
+        expires_at: expiresAt,
+        is_active: true
+      }))
+
+      const { error } = await supabase.from('user_passes').insert(records)
+
+      if (error) throw error
+      await fetchAllPasses()
+      return true
+    } catch (err) {
+      console.error('[useAllUserPasses] 다중 대학 패스 충전 실패:', err)
+      return false
+    }
+  }
+
+  /**
+   * 신규 대학 패스 발급과 기존 보유 대학 크레딧 추가(+5회 단위)를 동시에 일괄 처리하는 함수
+   */
+  const purchasePassesAndAddons = async (
+    newUniversities: string[],
+    addonCreditsByUniv: Record<string, number>
+  ): Promise<boolean> => {
+    if (!user) return false
+
+    try {
+      const now = new Date()
+      const records: any[] = []
+
+      // 1. 신규 대학 30일 마스터 패스 (각 30회, 30일)
+      newUniversities.forEach((univ) => {
+        const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        records.push({
+          user_id: user.id,
+          university: univ,
+          total_credits: 30,
+          remaining_credits: 30,
+          pass_type: 'standard_30',
+          starts_at: now.toISOString(),
+          expires_at: expiresAt,
+          is_active: true
+        })
+      })
+
+      // 2. 보유 대학 크레딧 추가 (+5회 단위 충전권, 30일)
+      Object.entries(addonCreditsByUniv).forEach(([univ, credits]) => {
+        if (credits > 0) {
+          const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+          records.push({
+            user_id: user.id,
+            university: univ,
+            total_credits: credits,
+            remaining_credits: credits,
+            pass_type: credits >= 10 ? 'addon_10' : 'addon_5',
+            starts_at: now.toISOString(),
+            expires_at: expiresAt,
+            is_active: true
+          })
+        }
+      })
+
+      if (records.length === 0) return true
+
+      const { error } = await supabase.from('user_passes').insert(records)
+      if (error) throw error
+
+      await fetchAllPasses()
+      return true
+    } catch (err) {
+      console.error('[useAllUserPasses] 패스 및 크레딧 일괄 충전 실패:', err)
+      return false
+    }
+  }
+
+  return {
+    allPasses,
+    isLoading,
+    refetchAllPasses: fetchAllPasses,
+    grantMultiplePasses,
+    purchasePassesAndAddons
+  }
+}
+

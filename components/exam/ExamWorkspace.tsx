@@ -193,7 +193,7 @@ interface ExamWorkspaceProps {
   selectedUniv?: string
   selectedExamId?: string
   initialQuestion?: string
-  onReport: (report?: GradingReportData) => void
+  onReport: (report?: GradingReportData, questionId?: 'q1' | 'q2') => void
   onBack?: () => void
   onHome?: () => void
 }
@@ -242,8 +242,24 @@ export default function ExamWorkspace({
 
   // 문제 탭 전환 상태 (q1, q2, q3 등 동적 지원)
   const [activeQuestion, setActiveQuestion] = useState<string>(initialQuestion || 'q1')
-  // 문제별 작성 답안 독립 관리 (공백 초기화)
-  const [answers, setAnswers] = useState<Record<string, string>>({})
+
+  // 문제별 작성 답안 및 활성 리포트 localStorage 실시간 자동 보존 및 복원 키 헬퍼
+  const getDraftStorageKey = (examId: string, qKey: string) => `nonsul_draft_${examId || 'common'}_${qKey}`
+  const getActiveSubKey = (examId: string, qKey: string) => `nonsul_active_sub_${examId || 'common'}_${qKey}`
+  const getActiveReportKey = (examId: string, qKey: string) => `nonsul_active_report_${examId || 'common'}_${qKey}`
+
+  // 문제별 작성 답안 상태 (컴포넌트 마운트 시 localStorage에 저장된 임시 답안 자동 복원)
+  const [answers, setAnswers] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {}
+    try {
+      const targetExam = selectedExamId || 'common'
+      const key = `nonsul_draft_${targetExam}_${initialQuestion || 'q1'}`
+      const saved = localStorage.getItem(key)
+      return saved ? { [initialQuestion || 'q1']: saved } : {}
+    } catch {
+      return {}
+    }
+  })
   const [showModelModal, setShowModelModal] = useState(false)
   const [showRubricModal, setShowRubricModal] = useState(false)
   // ▦ 200자 정통 원고지 팝업 모달 상태
@@ -252,6 +268,102 @@ export default function ExamWorkspace({
   const [showOcrModal, setShowOcrModal] = useState<boolean>(false)
   // 🔍 관리자 전용 채점 프롬프트 실시간 검사 및 튜닝 모달 상태
   const [showPromptInspector, setShowPromptInspector] = useState<boolean>(false)
+
+  // 📝 수험생 이전 제출 및 첨삭 이력 상태
+  interface SubmissionHistoryItem {
+    id: string
+    exam_id: string
+    exam_title: string
+    question_label: string
+    student_answer: string
+    char_count: number
+    total_score: number
+    status_verdict: string
+    grading_report: GradingReportData
+    created_at: string
+  }
+  const [submissionHistory, setSubmissionHistory] = useState<SubmissionHistoryItem[]>([])
+  const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false)
+  // 현재 선택되어 에디터에 로드된 첨삭 이력 ID (localStorage 하이브리드 연동으로 언마운트 시에도 영구 기억)
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    try {
+      const targetExam = selectedExamId || 'common'
+      const key = `nonsul_active_sub_${targetExam}_${initialQuestion || 'q1'}`
+      return localStorage.getItem(key)
+    } catch {
+      return null
+    }
+  })
+
+  // 답안 불러오기 안내 토스트 배너 상태
+  const [loadNotice, setLoadNotice] = useState<string | null>(null)
+
+  // 이전 작성 답안 에디터로 불러오기 핸들러 (선택된 이력 ID 갱신, 에디터 로드, 로컬 스토리지에 1:1 영구 저장)
+  const handleLoadSubmissionAnswer = (item: SubmissionHistoryItem) => {
+    setSelectedSubmissionId(item.id)
+    handleAnswerChange(item.student_answer)
+    if (typeof window !== 'undefined') {
+      try {
+        const subKey = getActiveSubKey(selectedExamId, activeQuestion)
+        const reportKey = getActiveReportKey(selectedExamId, activeQuestion)
+        localStorage.setItem(subKey, item.id)
+        if (item.grading_report) {
+          const repObj = typeof item.grading_report === 'string'
+            ? JSON.parse(item.grading_report)
+            : item.grading_report
+          const reportJson = JSON.stringify(repObj)
+          localStorage.setItem(reportKey, reportJson)
+          localStorage.setItem('nonsul_active_grading_report', reportJson)
+        }
+      } catch (e) {
+        console.warn('[ExamWorkspace] active submission 로컬 저장 오류:', e)
+      }
+    }
+    setLoadNotice('선택하신 답안을 작성창에 불러왔습니다. 상단의 [리포트] 버튼을 클릭하면 이 답안의 채점 리포트를 언제든 확인할 수 있습니다.')
+    setTimeout(() => {
+      setLoadNotice(null)
+    }, 4500)
+  }
+
+  // 첨삭 이력 카드 클릭 토글 핸들러 (선택 시 답안 로드, 이미 선택된 카드 재클릭 시 선택 해제 및 답안 지우기)
+  const handleToggleSubmissionCard = (item: SubmissionHistoryItem) => {
+    if (selectedSubmissionId === item.id) {
+      // 이미 선택된 카드를 다시 클릭하면: 선택 해제 및 작성창 답안 비우기
+      setSelectedSubmissionId(null)
+      handleAnswerChange('')
+      if (typeof window !== 'undefined') {
+        try {
+          const subKey = getActiveSubKey(selectedExamId, activeQuestion)
+          const reportKey = getActiveReportKey(selectedExamId, activeQuestion)
+          localStorage.removeItem(subKey)
+          localStorage.removeItem(reportKey)
+        } catch (e) {
+          console.warn('[ExamWorkspace] active submission 로컬 삭제 오류:', e)
+        }
+      }
+      setLoadNotice('선택을 해제하고 답안 작성창을 초기화했습니다.')
+      setTimeout(() => {
+        setLoadNotice(null)
+      }, 3000)
+    } else {
+      // 새로운 카드를 클릭하면 답안 로드
+      handleLoadSubmissionAnswer(item)
+    }
+  }
+
+  // 이전 제출 이력 삭제 핸들러
+  const handleDeleteSubmission = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('정말로 이 첨삭 기록을 삭제하시겠습니까?')) return
+    try {
+      const { error } = await supabase.from('student_submissions').delete().eq('id', id)
+      if (error) throw error
+      setSubmissionHistory(prev => prev.filter(item => item.id !== id))
+    } catch (err: any) {
+      alert(`삭제 오류: ${err.message}`)
+    }
+  }
 
   // 관리자 토스트 알림 표시
   const triggerAdminNotice = (type: 'success' | 'error', message: string) => {
@@ -729,6 +841,42 @@ export default function ExamWorkspace({
   const currentPdfName = pdfName || currentQ?.pdfName || Object.values(questionsData).find(q => q?.pdfName)?.pdfName || ''
   const currentAnswer = answers[activeQuestion] || ''
 
+  // 현재 문항의 이전 제출 및 첨삭 이력 조회 핸들러
+  const fetchSubmissionHistory = async () => {
+    if (!user) {
+      setSubmissionHistory([])
+      return
+    }
+    setIsLoadingHistory(true)
+    try {
+      const currentLabel = questionsData[activeQuestion]?.label || '문항 1'
+      const { data, error } = await supabase
+        .from('student_submissions')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('exam_id', selectedExamId)
+        .eq('question_label', currentLabel)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.warn('[ExamWorkspace] 제출 이력 조회 오류:', error.message)
+      } else {
+        setSubmissionHistory(data || [])
+      }
+    } catch (err: any) {
+      console.warn('[ExamWorkspace] 제출 이력 조회 예외:', err)
+    } finally {
+      setIsLoadingHistory(false)
+    }
+  }
+
+  const currentQuestionLabel = questionsData[activeQuestion]?.label || '문항 1'
+
+  // 문항/시험/사용자 변경 시 이력 자동 조회 (불필요한 전체 객체 재조회 방지)
+  useEffect(() => {
+    fetchSubmissionHistory()
+  }, [user, selectedExamId, activeQuestion, currentQuestionLabel])
+
   // 문제지 원본 PDF를 화면 왼쪽에 100% 높이의 독립 창으로 열람 (사용자가 크기 및 위치 자유 조절 가능)
   const handleOpenPdfWindow = () => {
     if (!currentPdfUrl) {
@@ -769,8 +917,125 @@ export default function ExamWorkspace({
     }
   }
 
+  // 문항(activeQuestion) 또는 시험(selectedExamId) 전환 시 localStorage 임시 답안 및 활성 회차 복원
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const draftKey = getDraftStorageKey(selectedExamId, activeQuestion)
+    const savedDraft = localStorage.getItem(draftKey)
+    if (savedDraft && !answers[activeQuestion]) {
+      setAnswers(prev => ({ ...prev, [activeQuestion]: savedDraft }))
+    }
+
+    const subKey = getActiveSubKey(selectedExamId, activeQuestion)
+    const savedSubId = localStorage.getItem(subKey)
+    setSelectedSubmissionId(savedSubId || null)
+  }, [selectedExamId, activeQuestion])
+
+  // 답안 작성 및 변경 시 React State + localStorage 실시간 자동 저장
   const handleAnswerChange = (val: string) => {
     setAnswers((prev) => ({ ...prev, [activeQuestion]: val }))
+    if (typeof window !== 'undefined') {
+      try {
+        const key = getDraftStorageKey(selectedExamId, activeQuestion)
+        if (val && val.trim().length > 0) {
+          localStorage.setItem(key, val)
+        } else {
+          localStorage.removeItem(key)
+        }
+      } catch (e) {
+        console.warn('[ExamWorkspace] 임시 답안 로컬 저장 오류:', e)
+      }
+    }
+  }
+
+  // 상단 헤더의 [리포트] 모드 전환 버튼 클릭 핸들러 (현재 선택된 답안의 채점 리포트 화면으로 1:1 강제 동기화)
+  const handleGoToReportMode = () => {
+    let targetReport: GradingReportData | null = null
+    const draftText = (answers[activeQuestion] || '').trim()
+
+    // 1. 하단 이력에서 특정 카드를 선택하여 보고 있는 경우 (selectedSubmissionId 또는 localStorage activeId)
+    let activeId = selectedSubmissionId
+    if (!activeId && typeof window !== 'undefined') {
+      try {
+        activeId = localStorage.getItem(getActiveSubKey(selectedExamId, activeQuestion))
+      } catch {}
+    }
+
+    if (activeId && submissionHistory && submissionHistory.length > 0) {
+      const found = submissionHistory.find((s) => s.id === activeId)
+      if (found && found.grading_report) {
+        targetReport = typeof found.grading_report === 'string'
+          ? JSON.parse(found.grading_report)
+          : found.grading_report
+      }
+    }
+
+    // 특정 카드가 선택되어 리포트가 있으면 1:1 즉시 이동
+    if (targetReport) {
+      if (typeof window !== 'undefined') {
+        try {
+          const reportJson = JSON.stringify(targetReport)
+          localStorage.setItem(getActiveReportKey(selectedExamId, activeQuestion), reportJson)
+          localStorage.setItem('nonsul_active_grading_report', reportJson)
+        } catch {}
+      }
+      onReport(targetReport, activeQuestion as 'q1' | 'q2')
+      return
+    }
+
+    // 2. 글 내용이 공백이거나 비어있는 경우: 리포트 페이지로 넘어가지 않고 안내 메시지 표시 후 작성창 포커스
+    if (!draftText) {
+      setLoadNotice('작성된 답안이 없거나 선택된 첨삭 이력이 없습니다. 답안을 작성하시거나 하단 첨삭 이력에서 회차를 먼저 선택해 주세요.')
+      setTimeout(() => {
+        setLoadNotice(null)
+      }, 5000)
+
+      if (typeof window !== 'undefined') {
+        const textarea = document.querySelector('textarea')
+        if (textarea) {
+          textarea.focus()
+        }
+      }
+      return
+    }
+
+    // 3. 글 내용이 있는 상태에서 아직 채점되지 않은 새 답안인 경우 (이전 채점 이력 존재 시 확인 창 표시)
+    if (submissionHistory && submissionHistory.length > 0) {
+      const latestSub = submissionHistory[0]
+
+      const shouldViewLatest = confirm(
+        `현재 작성 중인 답안은 아직 채점되지 않았습니다.\n이전에 채점받았던 가장 최근(#${submissionHistory.length}회차) 리포트를 확인하시겠습니까?\n\n(작성 중인 답안은 안전하게 자동 보존됩니다.)`
+      )
+      if (!shouldViewLatest) return
+
+      const rep = latestSub.grading_report
+      targetReport = typeof rep === 'string' ? JSON.parse(rep) : rep
+
+      if (targetReport) {
+        if (typeof window !== 'undefined') {
+          try {
+            const reportJson = JSON.stringify(targetReport)
+            localStorage.setItem(getActiveReportKey(selectedExamId, activeQuestion), reportJson)
+            localStorage.setItem('nonsul_active_grading_report', reportJson)
+          } catch {}
+        }
+        onReport(targetReport, activeQuestion as 'q1' | 'q2')
+        return
+      }
+    }
+
+    // 4. 이 문항에 대한 채점 이력이 아예 없는 경우: 친절한 토스트 안내 및 작성창 포커스
+    setLoadNotice('아직 이 문항에 대해 채점받은 리포트가 없습니다. 답안을 작성하신 후 하단의 [실전 AI 채점 제출]을 먼저 진행해 주세요!')
+    setTimeout(() => {
+      setLoadNotice(null)
+    }, 5000)
+
+    if (typeof window !== 'undefined') {
+      const textarea = document.querySelector('textarea')
+      if (textarea) {
+        textarea.focus()
+      }
+    }
   }
 
   // 사용자가 채점을 취소하고 답안으로 돌아가기를 눌렀을 때의 핸들러
@@ -837,27 +1102,48 @@ export default function ExamWorkspace({
 
       // 로그인된 수험생/관리자의 경우 DB에 답안 및 채점 리포트 영구 저장
       if (user) {
-        supabase
-          .from('student_submissions')
-          .insert({
-            user_id: user.id,
-            exam_id: selectedExamId,
-            exam_title: currentQ.tag || `${currentUniv} 수시 논술`,
-            university: currentUniv,
-            question_label: currentQ.label || '문항 1',
-            student_answer: currentAnswer,
-            char_count: currentAnswer.length,
-            total_score: reportData.totalScore || 0,
-            status_verdict: reportData.statusVerdict || '채점 완료',
-            grading_report: reportData,
-          })
-          .then(({ error: saveErr }) => {
-            if (saveErr) console.warn('[ExamWorkspace] 커스텀 채점 영구 저장 오류:', saveErr.message)
-            else console.log('[ExamWorkspace] 커스텀 채점 리포트 DB 저장 성공!')
-          })
+        try {
+          const { data: insertData, error: saveErr } = await supabase
+            .from('student_submissions')
+            .insert({
+              user_id: user.id,
+              exam_id: selectedExamId,
+              exam_title: currentQ.tag || `${currentUniv} 수시 논술`,
+              university: currentUniv,
+              question_label: currentQ.label || '문항 1',
+              student_answer: currentAnswer,
+              char_count: currentAnswer.length,
+              total_score: reportData.totalScore || 0,
+              status_verdict: reportData.statusVerdict || '채점 완료',
+              grading_report: reportData,
+            })
+            .select('id')
+            .single()
+
+          if (saveErr) console.warn('[ExamWorkspace] 커스텀 채점 영구 저장 오류:', saveErr.message)
+          else {
+            console.log('[ExamWorkspace] 커스텀 채점 리포트 DB 저장 성공!')
+            if (insertData?.id) {
+              setSelectedSubmissionId(insertData.id)
+              if (typeof window !== 'undefined') {
+                try {
+                  const subKey = getActiveSubKey(selectedExamId, activeQuestion)
+                  const reportKey = getActiveReportKey(selectedExamId, activeQuestion)
+                  const reportJson = JSON.stringify(reportData)
+                  localStorage.setItem(subKey, insertData.id)
+                  localStorage.setItem(reportKey, reportJson)
+                  localStorage.setItem('nonsul_active_grading_report', reportJson)
+                } catch {}
+              }
+            }
+            fetchSubmissionHistory()
+          }
+        } catch (dbErr) {
+          console.warn('[ExamWorkspace] 커스텀 채점 DB 저장 예외:', dbErr)
+        }
       }
 
-      onReport(reportData)
+      onReport(reportData, activeQuestion as 'q1' | 'q2')
     } catch (err: any) {
       console.warn('커스텀 프롬프트 채점 오류:', err)
       alert(`커스텀 프롬프트 채점 오류: ${err.message}`)
@@ -958,27 +1244,48 @@ export default function ExamWorkspace({
 
       // 로그인된 수험생/관리자의 경우 DB에 답안 및 채점 리포트 영구 저장
       if (user) {
-        supabase
-          .from('student_submissions')
-          .insert({
-            user_id: user.id,
-            exam_id: selectedExamId,
-            exam_title: currentQ.tag || `${currentUniv} 수시 논술`,
-            university: currentUniv,
-            question_label: currentQ.label || '문항 1',
-            student_answer: currentAnswer,
-            char_count: currentAnswer.length,
-            total_score: reportData.totalScore || 0,
-            status_verdict: reportData.statusVerdict || '채점 완료',
-            grading_report: reportData,
-          })
-          .then(({ error: saveErr }) => {
-            if (saveErr) console.warn('[ExamWorkspace] 답안 영구 저장 오류:', saveErr.message)
-            else console.log('[ExamWorkspace] 답안 및 채점 리포트 DB 저장 성공!')
-          })
+        try {
+          const { data: insertData, error: saveErr } = await supabase
+            .from('student_submissions')
+            .insert({
+              user_id: user.id,
+              exam_id: selectedExamId,
+              exam_title: currentQ.tag || `${currentUniv} 수시 논술`,
+              university: currentUniv,
+              question_label: currentQ.label || '문항 1',
+              student_answer: currentAnswer,
+              char_count: currentAnswer.length,
+              total_score: reportData.totalScore || 0,
+              status_verdict: reportData.statusVerdict || '채점 완료',
+              grading_report: reportData,
+            })
+            .select('id')
+            .single()
+
+          if (saveErr) console.warn('[ExamWorkspace] 답안 영구 저장 오류:', saveErr.message)
+          else {
+            console.log('[ExamWorkspace] 답안 및 채점 리포트 DB 저장 성공!')
+            if (insertData?.id) {
+              setSelectedSubmissionId(insertData.id)
+              if (typeof window !== 'undefined') {
+                try {
+                  const subKey = getActiveSubKey(selectedExamId, activeQuestion)
+                  const reportKey = getActiveReportKey(selectedExamId, activeQuestion)
+                  const reportJson = JSON.stringify(reportData)
+                  localStorage.setItem(subKey, insertData.id)
+                  localStorage.setItem(reportKey, reportJson)
+                  localStorage.setItem('nonsul_active_grading_report', reportJson)
+                } catch {}
+              }
+            }
+            fetchSubmissionHistory()
+          }
+        } catch (dbErr) {
+          console.warn('[ExamWorkspace] 답안 DB 저장 예외:', dbErr)
+        }
       }
 
-      onReport(reportData)
+      onReport(reportData, activeQuestion as 'q1' | 'q2')
     } catch (err: any) {
       if (err.name === 'AbortError') {
         console.log('채점 요청이 사용자에 의해 안전하게 취소되었습니다.')
@@ -1038,8 +1345,16 @@ export default function ExamWorkspace({
           )}
 
           <div className="mode-toggle">
-            <button className="active">응시 모드</button>
-            <button onClick={() => onReport()}>리포트</button>
+            <button type="button" className="active" title="현재 원고지 답안 작성 화면입니다">
+              응시 모드
+            </button>
+            <button
+              type="button"
+              onClick={handleGoToReportMode}
+              title="이 문항의 최신 AI 정밀 채점 리포트 화면으로 이동"
+            >
+              리포트
+            </button>
           </div>
           <div className="timer">
             <Clock3 />
@@ -1408,6 +1723,37 @@ export default function ExamWorkspace({
             <span style={{ width: `${Math.min(currentAnswer.replace(/\s/g, '').length / 9, 100)}%` }} />
           </div>
 
+          {loadNotice && (
+            <div
+              style={{
+                marginTop: '10px',
+                marginBottom: '4px',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                backgroundColor: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                color: '#1e40af',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CheckCircle2 size={16} color="#2563eb" />
+                <span>{loadNotice}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLoadNotice(null)}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '2px' }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
           <div className="editor-wrap">
             <textarea
               aria-label="나의 답안 작성"
@@ -1495,6 +1841,15 @@ export default function ExamWorkspace({
                 onClick={() => {
                   if (confirm(`${currentQ.label} 답안을 모두 지우고 새로 작성하시겠습니까?`)) {
                     handleAnswerChange('')
+                    setSelectedSubmissionId(null)
+                    if (typeof window !== 'undefined') {
+                      try {
+                        const subKey = getActiveSubKey(selectedExamId, activeQuestion)
+                        const reportKey = getActiveReportKey(selectedExamId, activeQuestion)
+                        localStorage.removeItem(subKey)
+                        localStorage.removeItem(reportKey)
+                      } catch {}
+                    }
                   }
                 }}
                 title="답안 초기화"
@@ -1521,6 +1876,194 @@ export default function ExamWorkspace({
             >
               <ClipboardList size={14} /> {currentQ.label} 공식 채점 기준표 보기
             </button>
+          </div>
+
+          {/* 📝 수험생 이전 제출 및 첨삭 이력 (날짜순 정렬 카드 리스트) */}
+          <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px dashed #cbd5e1' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Clock3 size={16} className="text-blue-600" />
+                <h4 style={{ margin: 0, fontSize: '14.5px', fontWeight: 800, color: '#0f172a' }}>
+                  {currentQ.label} 제출 및 첨삭 이력 ({submissionHistory.length}회)
+                </h4>
+              </div>
+              <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                작성 날짜순 (최신순)
+              </span>
+            </div>
+
+            {isLoadingHistory ? (
+              <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '13px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <Loader2 size={18} className="animate-spin text-blue-600 mx-auto mb-1.5" />
+                <span>제출 이력을 확인하는 중입니다...</span>
+              </div>
+            ) : !user ? (
+              <div style={{ padding: '18px 20px', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#64748b' }}>
+                  로그인하시면 작성한 답안과 채점 결과가 자동 보관되어 언제든 다시 불러와 첨삭을 이어갈 수 있습니다.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openAuthModal('login')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    backgroundColor: '#2563eb',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  로그인 / 무료 회원가입
+                </button>
+              </div>
+            ) : submissionHistory.length === 0 ? (
+              <div style={{ padding: '24px 20px', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                <FileText size={24} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
+                <p style={{ margin: '0 0 4px', fontSize: '13.5px', fontWeight: 700, color: '#334155' }}>
+                  아직 {currentQ.label}에 제출된 답안이 없습니다.
+                </p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                  답안을 작성하신 후 하단의 <strong>[실전 AI 채점 제출]</strong>을 클릭하시면, 작성 답안과 채점 리포트가 이곳에 차례로 보관됩니다.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {submissionHistory.map((item, index) => {
+                  const formattedDate = new Date(item.created_at).toLocaleString('ko-KR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                  const isPass = item.total_score >= 82
+                  // 현재 선택된 첨삭 이력인지 엄격하게 판별 (미선택 시 null이므로 모든 카드 해제됨)
+                  const isSelected = selectedSubmissionId === item.id
+
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => handleToggleSubmissionCard(item)}
+                      title={isSelected ? '클릭하여 선택 해제 (답안 작성창 초기화)' : '클릭하여 이 답안을 작성창에 불러오기'}
+                      style={{
+                        backgroundColor: isSelected ? '#f0f7ff' : '#ffffff',
+                        borderRadius: '12px',
+                        padding: '13px 18px',
+                        border: isSelected ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                        boxShadow: isSelected
+                          ? '0 4px 14px rgba(37, 99, 235, 0.14)'
+                          : '0 1px 3px rgba(0,0,0,0.02)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '10px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) {
+                          e.currentTarget.style.borderColor = '#93c5fd'
+                          e.currentTarget.style.backgroundColor = '#f8fafc'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) {
+                          e.currentTarget.style.borderColor = '#e2e8f0'
+                          e.currentTarget.style.backgroundColor = '#ffffff'
+                        }
+                      }}
+                    >
+                      {/* 좌측 메타 정보 (회차 뱃지, 선택 상태 뱃지, 날짜, 글자 수) */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            padding: '2.5px 8px',
+                            borderRadius: '6px',
+                            backgroundColor: isSelected ? '#2563eb' : '#f1f5f9',
+                            color: isSelected ? '#ffffff' : '#475569',
+                          }}
+                        >
+                          #{submissionHistory.length - index}회차
+                        </span>
+                        {isSelected && (
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              padding: '2.5px 8px',
+                              borderRadius: '6px',
+                              backgroundColor: '#dbeafe',
+                              color: '#1d4ed8',
+                              border: '1px solid #bfdbfe',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <Check size={12} strokeWidth={2.5} /> 선택됨
+                          </span>
+                        )}
+                        <span style={{ fontSize: '12px', color: '#64748b' }}>
+                          {formattedDate}
+                        </span>
+                        <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>·</span>
+                        <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
+                          {item.char_count}자
+                        </span>
+                      </div>
+
+                      {/* 우측 점수, 합격 판정 & 삭제 액션 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            padding: '2.5px 8px',
+                            borderRadius: '6px',
+                            backgroundColor: isPass ? '#dcfce7' : '#fee2e2',
+                            color: isPass ? '#15803d' : '#b91c1c',
+                          }}
+                        >
+                          {item.status_verdict || (isPass ? '합격권' : '도전 권장')}
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '2px' }}>
+                          <strong style={{ fontSize: '16px', fontWeight: 900, color: isPass ? '#1d4ed8' : '#e11d48' }}>
+                            {item.total_score}
+                          </strong>
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>/ 100점</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteSubmission(item.id, e)}
+                          title="기록 삭제"
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#cbd5e1',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            marginLeft: '2px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            borderRadius: '4px'
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                          onMouseLeave={(e) => (e.currentTarget.style.color = '#cbd5e1')}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </section>
       </div>

@@ -60,6 +60,16 @@ export default function ReportPage({
   const studentMeta = `${reportData?.studentName || '수험생'} 학생 · 실전 AI 정밀 채점 결과`
   const questionBadge = reportData?.questionLabel || '문항 정밀 채점 리포트'
 
+  // 대학명 동적 추출 (경희대, 동국대, 홍익대 등)
+  const currentUnivName = examTitle.includes('경희')
+    ? '경희대학교'
+    : examTitle.includes('동국')
+    ? '동국대학교'
+    : examTitle.includes('홍익')
+    ? '홍익대학교'
+    : '대학별'
+  const currentUnivShortName = currentUnivName.replace('대학교', '대')
+
   const totalScore = reportData ? reportData.totalScore : 0
   const maxScore = reportData?.maxPossibleScore ?? 100
   const cutline = reportData?.cutlineScore ?? 82
@@ -163,7 +173,7 @@ export default function ReportPage({
               <div className="score-progress">
                 <span style={{ width: `${Math.min(100, Math.max(10, Math.round((totalScore / maxScore) * 100)))}%` }} />
               </div>
-              <small>최근 홍익대 합격자 평균 81.4점 (실시간 공식 기준 대조)</small>
+              <small>최근 {currentUnivShortName} 합격자 평균 81.4점 (실시간 공식 기준 대조)</small>
             </div>
           </div>
           <div className="kpi-grid">
@@ -312,20 +322,12 @@ export default function ReportPage({
             <Check /> AI 정밀 채점 완료
           </span>
           <span className="report-date-text">
-            <span>홍익대학교 공식 채점 기준 검증</span>
+            <span>{currentUnivName} 공식 채점 기준 검증</span>
             <span>·</span>
             <span>실시간 진단 리포트</span>
           </span>
         </div>
         <div className="report-action-btns">
-          <button
-            type="button"
-            className="btn-report-outline"
-            onClick={onExam}
-            title="작성 공간으로 돌아가 첨삭 제안을 바탕으로 답안을 수정합니다"
-          >
-            <RotateCcw /> 답안 수정 및 다시 쓰기
-          </button>
           <button
             type="button"
             className="btn-report-outline"
@@ -340,9 +342,9 @@ export default function ReportPage({
             type="button"
             className="btn-report-primary"
             onClick={onExam}
-            title="다른 문항 또는 다음 회차 논술 문제를 풉니다"
+            title="답안 작성 화면으로 돌아가 이전 답안을 수정하거나 다른 문제를 풉니다"
           >
-            다음 문제 풀기 <ArrowRight />
+            답안 수정 / 다른 문제 풀기 <ArrowRight />
           </button>
         </div>
       </footer>

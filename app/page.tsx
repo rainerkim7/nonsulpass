@@ -33,8 +33,16 @@ function MainContent() {
   const [selectedExamId, setSelectedExamId] = useState<string>(paramExam)
   const [initialQuestion, setInitialQuestion] = useState<'q1' | 'q2'>(paramQ)
 
-  // 2. Gemini AI 실시간 채점 결과 데이터 상태
-  const [gradingReport, setGradingReport] = useState<GradingReportData | null>(null)
+  // 2. Gemini AI 실시간 채점 결과 데이터 상태 (localStorage 캐시 하이브리드 연동으로 유실 방지)
+  const [gradingReport, setGradingReport] = useState<GradingReportData | null>(() => {
+    if (typeof window === 'undefined') return null
+    try {
+      const saved = localStorage.getItem('nonsul_active_grading_report')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
 
   // URL 파라미터가 브라우저 뒤로가기/앞으로가기 등으로 변경되었을 때 로컬 상태 동기화
   useEffect(() => {
@@ -60,7 +68,7 @@ function MainContent() {
     if (newView !== 'home') {
       params.set('view', newView)
       if (targetUnivId) params.set('univ', targetUnivId)
-      if (newView === 'exam') {
+      if (newView === 'exam' || newView === 'report') {
         if (targetExamId) params.set('exam', targetExamId)
         if (targetQId) params.set('q', targetQId)
       }
@@ -111,12 +119,29 @@ function MainContent() {
     updateUrlAndState('exam', targetUnivId, targetExam, targetQ)
   }
 
-  // 채점 리포트 화면 이동
-  const handleNavigateToReport = (report?: GradingReportData) => {
+  // 채점 리포트 화면 이동 (로컬 스토리지에 캐싱하여 리포트 유실 방지 및 현재 문항 탭 보존)
+  const handleNavigateToReport = (report?: GradingReportData, questionId?: 'q1' | 'q2') => {
+    if (questionId) {
+      setInitialQuestion(questionId)
+    }
     if (report) {
       setGradingReport(report)
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('nonsul_active_grading_report', JSON.stringify(report))
+        } catch (e) {
+          console.warn('[App] 리포트 캐싱 오류:', e)
+        }
+      }
+    } else {
+      if (typeof window !== 'undefined') {
+        try {
+          const cached = localStorage.getItem('nonsul_active_grading_report')
+          if (cached) setGradingReport(JSON.parse(cached))
+        } catch {}
+      }
     }
-    updateUrlAndState('report')
+    updateUrlAndState('report', selectedUnivId, selectedExamId, questionId || initialQuestion)
   }
 
   // 4. 뷰 렌더링 분기
@@ -147,7 +172,7 @@ function MainContent() {
   if (view === 'report') {
     return (
       <ReportPage
-        onExam={() => updateUrlAndState('exam')}
+        onExam={() => updateUrlAndState('exam', selectedUnivId, selectedExamId, initialQuestion)}
         reportData={gradingReport}
         onHome={handleNavigateHome}
       />
