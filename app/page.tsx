@@ -13,7 +13,8 @@ import UniversityDetailPage from '@/components/univ/UniversityDetailPage'
 import ExamWorkspace from '@/components/exam/ExamWorkspace'
 import ReportPage from '@/components/report/ReportPage'
 import type { GradingReportData } from '@/types/grading'
-import { getUniversityName } from '@/lib/constants/universities'
+import { getUniversityName, getUniversityId } from '@/lib/constants/universities'
+import { getAllMergedUniversities } from '@/lib/api/university'
 
 type ViewMode = 'home' | 'univ' | 'exam' | 'report'
 
@@ -25,13 +26,20 @@ function MainContent() {
   const paramView = (searchParams.get('view') as ViewMode) || 'home'
   const paramUniv = searchParams.get('univ') || 'hongik'
   const paramExam = searchParams.get('exam') || 'hongik-2026-humanities-real'
-  const paramQ = (searchParams.get('q') as 'q1' | 'q2') || 'q1'
+  const paramQ = searchParams.get('q') || 'q1'
 
   const [view, setView] = useState<ViewMode>(paramView)
   const [selectedUnivId, setSelectedUnivId] = useState<string>(paramUniv)
   const [selectedUniv, setSelectedUniv] = useState<string>(getUniversityName(paramUniv))
   const [selectedExamId, setSelectedExamId] = useState<string>(paramExam)
-  const [initialQuestion, setInitialQuestion] = useState<'q1' | 'q2'>(paramQ)
+  const [initialQuestion, setInitialQuestion] = useState<string>(paramQ)
+
+  // 마운트 시 DB에 등록된 동적 대학 목록을 런타임 캐시에 동기화
+  useEffect(() => {
+    getAllMergedUniversities().then(() => {
+      setSelectedUniv(getUniversityName(paramUniv))
+    })
+  }, [paramUniv])
 
   // 2. Gemini AI 실시간 채점 결과 데이터 상태 (localStorage 캐시 하이브리드 연동으로 유실 방지)
   const [gradingReport, setGradingReport] = useState<GradingReportData | null>(() => {
@@ -49,7 +57,7 @@ function MainContent() {
     const currentView = (searchParams.get('view') as ViewMode) || 'home'
     const currentUniv = searchParams.get('univ') || 'hongik'
     const currentExam = searchParams.get('exam') || 'hongik-2026-humanities-real'
-    const currentQ = (searchParams.get('q') as 'q1' | 'q2') || 'q1'
+    const currentQ = searchParams.get('q') || 'q1'
 
     setView(currentView)
     setSelectedUnivId(currentUniv)
@@ -59,7 +67,7 @@ function MainContent() {
   }, [searchParams])
 
   // URL 업데이트 및 상태 변경 헬퍼
-  const updateUrlAndState = useCallback((newView: ViewMode, univId?: string, examId?: string, qId?: 'q1' | 'q2') => {
+  const updateUrlAndState = useCallback((newView: ViewMode, univId?: string, examId?: string, qId?: string) => {
     const targetUnivId = univId || selectedUnivId
     const targetExamId = examId || selectedExamId
     const targetQId = qId || initialQuestion
@@ -93,24 +101,22 @@ function MainContent() {
     updateUrlAndState('home')
   }
 
-  // 대학 상세 분석 페이지 이동
-  const handleSelectUniv = (univId: string, _univName: string) => {
-    if (['hongik', 'khu', 'dongguk'].includes(univId)) {
-      updateUrlAndState('univ', univId)
-    }
+  // 대학 상세 분석 페이지 이동 (모든 활성/패스 보유 대학 동적 진입 지원)
+  const handleSelectUniv = (univId: string, univName: string) => {
+    if (!univId) return
+    if (univName) setSelectedUniv(univName)
+    updateUrlAndState('univ', univId)
   }
 
-  // 시험 모드 진입
-  const handleStartExam = (univName?: string, examId?: string, questionId?: 'q1' | 'q2') => {
+  // 시험 모드 진입 (모든 추가 대학 및 q1~q3+ 문항 동적 지원)
+  const handleStartExam = (univName?: string, examId?: string, questionId?: string) => {
     let targetUnivId = selectedUnivId
     if (univName) {
-      if (univName.includes('경희')) targetUnivId = 'khu'
-      else if (univName.includes('동국')) targetUnivId = 'dongguk'
-      else if (univName.includes('홍익')) targetUnivId = 'hongik'
-    }
-    if (examId) {
-      if (examId.startsWith('khu')) targetUnivId = 'khu'
-      else if (examId.startsWith('dongguk')) targetUnivId = 'dongguk'
+      targetUnivId = getUniversityId(univName)
+      setSelectedUniv(univName)
+    } else if (examId && examId.includes('-')) {
+      const prefix = examId.split('-')[0]
+      if (prefix) targetUnivId = prefix
     }
 
     const targetExam = examId || selectedExamId
@@ -120,7 +126,7 @@ function MainContent() {
   }
 
   // 채점 리포트 화면 이동 (로컬 스토리지에 캐싱하여 리포트 유실 방지 및 현재 문항 탭 보존)
-  const handleNavigateToReport = (report?: GradingReportData, questionId?: 'q1' | 'q2') => {
+  const handleNavigateToReport = (report?: GradingReportData, questionId?: string) => {
     if (questionId) {
       setInitialQuestion(questionId)
     }

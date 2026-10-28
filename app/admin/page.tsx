@@ -19,7 +19,9 @@ import {
   ArrowLeft,
   School,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Plus,
+  X
 } from 'lucide-react'
 
 // 하위 전용 매니저 컴포넌트 임포트
@@ -29,7 +31,13 @@ import TrendsManager, { TrendRow } from './components/TrendsManager'
 import RubricsManager, { ScoringRuleRow, RubricRow } from './components/RubricsManager'
 
 // 중앙 집중 대학 메타데이터 임포트
-import { UNIVERSITIES, UNIVERSITY_FACULTIES, getUniversityName } from '@/lib/constants/universities'
+import {
+  UNIVERSITIES,
+  UNIVERSITY_FACULTIES,
+  getUniversityName,
+  registerDynamicUniversities,
+  type UniversityMeta,
+} from '@/lib/constants/universities'
 import { useAuth } from '@/components/AuthGate'
 
 // 브라우저 로컬 스토리지 키 (직전 선택 대학 기억)
@@ -42,24 +50,53 @@ function AdminConsoleContent() {
   // 관리자 권한 확인 (admin 계정 여부)
   const { isAdmin, isLoading: isAuthLoading } = useAuth()
 
+  // 전체 관리 대상 대학 목록 상태 (기본 프리셋 + DB 추가 대학 병합)
+  const [univList, setUnivList] = useState<UniversityMeta[]>(UNIVERSITIES)
+
+  // 신규 대학 추가 모달 상태
+  const [isAddUnivOpen, setIsAddUnivOpen] = useState<boolean>(false)
+  const [newUnivId, setNewUnivId] = useState<string>('')
+  const [newUnivName, setNewUnivName] = useState<string>('')
+  const [newUnivFaculty, setNewUnivFaculty] = useState<string>('인문계열 (공통)')
+  const [newUnivDuration, setNewUnivDuration] = useState<string>('120분')
+  const [isAddingUniv, setIsAddingUniv] = useState<boolean>(false)
+
   // 1. 현재 선택된 대학 상태: URL 파라미터(?univ=...) -> localStorage -> 'hongik' 순으로 우선 복원
   const paramUniv = searchParams.get('univ')
   const [selectedUniv, setSelectedUniv] = useState<string>(() => {
-    if (paramUniv && UNIVERSITIES.some(u => u.id === paramUniv)) {
+    if (paramUniv) {
       return paramUniv
     }
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved && UNIVERSITIES.some(u => u.id === saved)) {
+      if (saved) {
         return saved
       }
     }
     return 'hongik'
   })
 
+  // DB에 등록된 대학 목록 동기화 로드
+  const fetchUniversityList = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/universities')
+      const data = await res.json()
+      if (data.success && Array.isArray(data.universities)) {
+        registerDynamicUniversities(data.universities)
+        setUnivList(data.universities)
+      }
+    } catch (err) {
+      console.warn('[AdminPage] 대학 목록 동기화 실패:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchUniversityList()
+  }, [fetchUniversityList])
+
   // URL 파라미터가 브라우저 뒤로가기 등으로 변경되었을 때 동기화
   useEffect(() => {
-    if (paramUniv && paramUniv !== selectedUniv && UNIVERSITIES.some(u => u.id === paramUniv)) {
+    if (paramUniv && paramUniv !== selectedUniv) {
       setSelectedUniv(paramUniv)
       if (typeof window !== 'undefined') {
         localStorage.setItem(STORAGE_KEY, paramUniv)
@@ -168,10 +205,54 @@ function AdminConsoleContent() {
 
   // 대학 전체 데이터 일괄 새로고침 (올인원 저장 후 등)
   const refreshAllData = useCallback(() => {
+    fetchUniversityList()
     fetchExams(selectedUniv)
     fetchTrends(selectedUniv)
     fetchRubrics(selectedUniv)
-  }, [fetchExams, fetchTrends, fetchRubrics, selectedUniv])
+  }, [fetchUniversityList, fetchExams, fetchTrends, fetchRubrics, selectedUniv])
+
+  // 신규 대학 추가 등록 핸들러
+  const handleCreateUniversity = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const cleanId = newUnivId.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '')
+    const cleanName = newUnivName.trim()
+
+    if (!cleanId || !cleanName) {
+      showNotice('error', '대학 영문 ID(예: inha, ajou)와 한글 대학명(예: 인하대학교)을 모두 입력해 주세요.')
+      return
+    }
+
+    setIsAddingUniv(true)
+    try {
+      const res = await fetch('/api/admin/universities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: cleanId,
+          name: cleanName,
+          faculty: newUnivFaculty.trim() || '인문계열 (공통)',
+          exam_duration: newUnivDuration.trim() || '120분',
+          is_active: true,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || '대학 추가 실패')
+      }
+
+      await fetchUniversityList()
+      handleSelectUniv(cleanId)
+      setIsAddUnivOpen(false)
+      setNewUnivId('')
+      setNewUnivName('')
+      setNewUnivFaculty('인문계열 (공통)')
+      showNotice('success', `${cleanName}(${cleanId}) 대학이 추가되었습니다. 이제 기출·출제경향·채점기준을 업로드할 수 있습니다!`)
+    } catch (err: any) {
+      showNotice('error', err.message || '대학 추가 중 오류가 발생했습니다.')
+    } finally {
+      setIsAddingUniv(false)
+    }
+  }
 
   // 대학 변경 시 전체 데이터 로드 및 기본 계열 설정
   useEffect(() => {
@@ -185,7 +266,8 @@ function AdminConsoleContent() {
     setCustomFaculty('')
   }, [selectedUniv, fetchExams, fetchTrends, fetchRubrics])
 
-  const currentUnivName = getUniversityName(selectedUniv)
+  const currentUnivObj = univList.find((u) => u.id === selectedUniv)
+  const currentUnivName = currentUnivObj?.name || getUniversityName(selectedUniv)
 
   // 관리자 권한 검사: 비관리자(일반 사용자) 계정 접근 차단 가드
   if (!isAuthLoading && !isAdmin) {
@@ -310,7 +392,7 @@ function AdminConsoleContent() {
                 <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   관리 대상 대학
                 </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '3px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '3px', flexWrap: 'wrap' }}>
                   <select
                     value={selectedUniv}
                     onChange={(e) => handleSelectUniv(e.target.value)}
@@ -325,14 +407,35 @@ function AdminConsoleContent() {
                       cursor: 'pointer'
                     }}
                   >
-                    {UNIVERSITIES.map(u => (
-                      <option key={u.id} value={u.id} disabled={!u.active}>
-                        {u.name} {u.active ? '(Supabase 연동 완료)' : '(준비중)'}
+                    {univList.map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} {u.active ? '(서비스 활성)' : '(신규 등록 가능)'}
                       </option>
                     ))}
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddUnivOpen(true)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #bfdbfe',
+                      background: '#eff6ff',
+                      color: '#1d4ed8',
+                      fontSize: '12.5px',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                    title="목록에 없는 새로운 대학을 추가합니다"
+                  >
+                    <Plus size={14} />
+                    새 대학 추가
+                  </button>
                   <span className="admin-badge-green">
-                    ● DB 연동 활성
+                    ● 전체 {univList.length}개 대학 관리 중
                   </span>
                 </div>
               </div>
@@ -441,6 +544,175 @@ function AdminConsoleContent() {
           />
         )}
       </main>
+
+      {/* 신규 대학 추가 등록 모달 */}
+      {isAddUnivOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 80,
+            background: 'rgba(15, 23, 42, 0.6)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '460px',
+              background: '#ffffff',
+              borderRadius: '16px',
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 20px 50px rgba(15, 23, 42, 0.2)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                padding: '18px 22px',
+                borderBottom: '1px solid #e2e8f0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: '#f8fafc',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <School size={18} color="#2563eb" />
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>
+                  신규 논술 대학 추가 등록
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddUnivOpen(false)}
+                style={{ border: 0, background: 'transparent', cursor: 'pointer', color: '#64748b' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateUniversity} style={{ padding: '22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
+                  대학 영문 식별자 (ID) *
+                </label>
+                <input
+                  type="text"
+                  value={newUnivId}
+                  onChange={(e) => setNewUnivId(e.target.value)}
+                  placeholder="예: inha, ajou, dankook, pnu (영문 소문자)"
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '13.5px',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
+                  한글 대학명 *
+                </label>
+                <input
+                  type="text"
+                  value={newUnivName}
+                  onChange={(e) => setNewUnivName(e.target.value)}
+                  placeholder="예: 인하대학교, 아주대학교, 부산대학교"
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '13.5px',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
+                  모집 계열 트랙 (콤마로 복수 트랙 구분 가능)
+                </label>
+                <input
+                  type="text"
+                  value={newUnivFaculty}
+                  onChange={(e) => setNewUnivFaculty(e.target.value)}
+                  placeholder="예: 인문계열 (공통) 또는 인문계열, 사회계열"
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '13.5px',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
+                  기본 시험 시간
+                </label>
+                <input
+                  type="text"
+                  value={newUnivDuration}
+                  onChange={(e) => setNewUnivDuration(e.target.value)}
+                  placeholder="예: 120분 (문항당 60분 권장)"
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '13.5px',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsAddUnivOpen(false)}
+                  style={{
+                    padding: '9px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#475569',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAddingUniv}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    border: 0,
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {isAddingUniv ? '등록 중...' : '대학 등록 및 선택'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

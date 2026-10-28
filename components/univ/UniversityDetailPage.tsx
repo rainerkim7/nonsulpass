@@ -23,7 +23,7 @@ import { useAuth } from '@/components/AuthGate'
 import { HONGIK_OVERVIEW, HONGIK_ALL_EXAMS, HONGIK_TRENDS, HONGIK_RUBRIC } from '@/data/hongik-data'
 import { KHU_OVERVIEW, KHU_ALL_EXAMS } from '@/data/khu-data'
 import { DONGGUK_OVERVIEW, DONGGUK_ALL_EXAMS, DONGGUK_TRENDS, DONGGUK_RUBRIC } from '@/data/dongguk-data'
-import { UNIVERSITY_EXAM_TRACKS } from '@/lib/constants/universities'
+import { UNIVERSITY_EXAM_TRACKS, getUniversityName } from '@/lib/constants/universities'
 import {
   getUniversity,
   getUniversityExams,
@@ -37,7 +37,7 @@ import {
 interface UniversityDetailPageProps {
   univId?: string
   onBack: () => void
-  onStartExam: (univName?: string, examId?: string, questionId?: 'q1' | 'q2') => void
+  onStartExam: (univName?: string, examId?: string, questionId?: string) => void
 }
 
 export default function UniversityDetailPage({
@@ -51,14 +51,34 @@ export default function UniversityDetailPage({
   const [activeTab, setActiveTab] = useState<'exams' | 'trends' | 'rubric'>('exams')
   const [filter, setFilter] = useState<'past' | 'mock' | 'expected'>('past')
 
+  const isHongik = univId === 'hongik'
   const isKhu = univId === 'khu'
   const isDongguk = univId === 'dongguk'
-  const defaultOverview = isDongguk ? DONGGUK_OVERVIEW : isKhu ? KHU_OVERVIEW : HONGIK_OVERVIEW
+  const defaultOverview = isDongguk
+    ? DONGGUK_OVERVIEW
+    : isKhu
+    ? KHU_OVERVIEW
+    : isHongik
+    ? HONGIK_OVERVIEW
+    : {
+        ...HONGIK_OVERVIEW,
+        university: getUniversityName(univId),
+        faculty: UNIVERSITY_EXAM_TRACKS[univId]?.join(' · ') || '인문·사회계열',
+        examDuration: '100~120분',
+        totalQuestions: '2~3문항',
+        charPerQuestion: '문항당 800~1,000자',
+        examFormat: '원고지 완결형 서술',
+        scoringRules: [],
+      }
 
-  // Supabase DB 비동기 데이터 상태
+  // Supabase DB 비동기 데이터 상태 (홍익/경희/동국 외 신규 대학은 빈 배열에서 시작하여 DB 데이터만 깨끗하게 렌더링)
   const [overview, setOverview] = useState(defaultOverview)
-  const [exams, setExams] = useState<any[]>(isDongguk ? DONGGUK_ALL_EXAMS : isKhu ? KHU_ALL_EXAMS : HONGIK_ALL_EXAMS)
-  const [trends, setTrends] = useState<TrendItem[]>(isDongguk ? DONGGUK_TRENDS : isKhu ? [] : HONGIK_TRENDS)
+  const [exams, setExams] = useState<any[]>(
+    isDongguk ? DONGGUK_ALL_EXAMS : isKhu ? KHU_ALL_EXAMS : isHongik ? HONGIK_ALL_EXAMS : []
+  )
+  const [trends, setTrends] = useState<TrendItem[]>(
+    isDongguk ? DONGGUK_TRENDS : isHongik ? HONGIK_TRENDS : []
+  )
   const [scoringRules, setScoringRules] = useState<ScoringRuleItem[]>(
     isDongguk
       ? DONGGUK_OVERVIEW.scoringRules.map((s) => ({
@@ -73,13 +93,17 @@ export default function UniversityDetailPage({
           { faculty: '인문·체육계열 논제 II', chip: '분류 및 비판형', score: '100점 (기본 60점)', subDesc: '정확한 이분법적 분류와 상대 입장에 대한 논리적 비판 강도 평가' },
           { faculty: '사회계열 논제 I & II', chip: '수리 및 정책 평가', score: '100점 (수리 40점)', subDesc: '확률·통계 계산 및 사회현상 분석을 통한 최적 대안 도출 능력 평가' },
         ]
-      : [
+      : isHongik
+      ? [
           { faculty: '사범대학 · 예술학과', chip: '인문학 집중', score: '문제 1 가중 · 60점 배점', subDesc: '국어, 문학, 윤리, 역사 제재 중심의 인문학적 독해 및 다각도 관점 대조 능력을 중점 평가합니다.' },
           { faculty: '경영대학 · 경제학부 · 법학부', chip: '사회과학 집중', score: '문제 2 가중 · 문제 1의 2배', subDesc: '경제, 법과 정치 제재의 사회적 원리를 실제 현실 쟁점에 적용하고 실효성 있는 대안을 도출하는 능력을 집중 평가합니다.' },
           { faculty: '캠퍼스자율전공 (인문)', chip: '균형 평가', score: '문제 1: 45점 / 문제 2: 55점', subDesc: '인문학적 비판 사고와 사회과학적 정책 대안 분석 역량을 고르게 종합 평가합니다.' },
         ]
+      : []
   )
-  const [rubrics, setRubrics] = useState<RubricItem[]>(isDongguk ? DONGGUK_RUBRIC : isKhu ? [] : HONGIK_RUBRIC)
+  const [rubrics, setRubrics] = useState<RubricItem[]>(
+    isDongguk ? DONGGUK_RUBRIC : isHongik ? HONGIK_RUBRIC : []
+  )
 
   // 동적 계열 목록 추출: 실제 출제 문제지(시험 트랙) 기준 표준 프리셋 최우선 적용
   const availableFaculties = useMemo(() => {
@@ -139,6 +163,14 @@ export default function UniversityDetailPage({
           }
           if (examsData && examsData.length > 0) {
             setExams(examsData as any)
+            // 기출문제가 0건이고 모의논술이나 예상문제만 등록된 신규 대학의 경우 해당 서브탭으로 자동 전환
+            const hasPast = examsData.some((e: any) => e.type === '기출문제')
+            const hasMock = examsData.some((e: any) => e.type === '모의논술')
+            if (!hasPast && hasMock) {
+              setFilter('mock')
+            } else if (!hasPast && !hasMock) {
+              setFilter('expected')
+            }
           }
           if (trendsData && trendsData.length > 0) {
             setTrends(trendsData as any)

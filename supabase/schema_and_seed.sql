@@ -31,8 +31,10 @@ CREATE TABLE IF NOT EXISTS public.exams (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 기존 테이블에 questions 컬럼 추가 (마이그레이션 안전 보장)
+-- 기존 테이블에 questions 및 원본 PDF 컬럼 추가 (마이그레이션 안전 보장)
 ALTER TABLE public.exams ADD COLUMN IF NOT EXISTS questions JSONB;
+ALTER TABLE public.exams ADD COLUMN IF NOT EXISTS pdf_url TEXT;
+ALTER TABLE public.exams ADD COLUMN IF NOT EXISTS pdf_name TEXT;
 
 -- 3. 출제 경향 및 유형 분석 테이블 (탭 2)
 CREATE TABLE IF NOT EXISTS public.university_trends (
@@ -72,29 +74,84 @@ CREATE TABLE IF NOT EXISTS public.university_rubrics (
   display_order INT DEFAULT 0
 );
 
+-- 6. 회원 프로필 테이블 (profiles)
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  name TEXT NOT NULL DEFAULT '수험생',
+  target_university TEXT DEFAULT '홍익대학교',
+  role TEXT NOT NULL DEFAULT 'user', -- 'admin' | 'user'
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 7. 학생 답안 제출 및 AI 정밀 채점 리포트 보관 테이블 (student_submissions)
+CREATE TABLE IF NOT EXISTS public.student_submissions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  exam_id TEXT NOT NULL,
+  exam_title TEXT NOT NULL,
+  university TEXT NOT NULL,
+  question_label TEXT NOT NULL,
+  student_answer TEXT NOT NULL,
+  char_count INT NOT NULL DEFAULT 0,
+  total_score INT NOT NULL DEFAULT 0,
+  status_verdict TEXT,
+  grading_report JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_student_submissions_user_exam
+  ON public.student_submissions(user_id, exam_id, question_label);
+
 -- ------------------------------------------------------------------------------
--- RLS (Row Level Security) 설정 및 조회 권한 부여 (공개 읽기 허용)
+-- RLS (Row Level Security) 설정 및 조회/관리 권한 부여
 -- ------------------------------------------------------------------------------
 ALTER TABLE public.universities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.exams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.university_trends ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scoring_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.university_rubrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.student_submissions ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Public Read Universities" ON public.universities;
 CREATE POLICY "Public Read Universities" ON public.universities FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Admin Write Universities" ON public.universities;
+CREATE POLICY "Admin Write Universities" ON public.universities FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Public Read Exams" ON public.exams;
 CREATE POLICY "Public Read Exams" ON public.exams FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Admin Write Exams" ON public.exams;
+CREATE POLICY "Admin Write Exams" ON public.exams FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Public Read Trends" ON public.university_trends;
 CREATE POLICY "Public Read Trends" ON public.university_trends FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Admin Write Trends" ON public.university_trends;
+CREATE POLICY "Admin Write Trends" ON public.university_trends FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Public Read Scoring" ON public.scoring_rules;
 CREATE POLICY "Public Read Scoring" ON public.scoring_rules FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Admin Write Scoring" ON public.scoring_rules;
+CREATE POLICY "Admin Write Scoring" ON public.scoring_rules FOR ALL USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Public Read Rubrics" ON public.university_rubrics;
 CREATE POLICY "Public Read Rubrics" ON public.university_rubrics FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Admin Write Rubrics" ON public.university_rubrics;
+CREATE POLICY "Admin Write Rubrics" ON public.university_rubrics FOR ALL USING (true) WITH CHECK (true);
+
+-- profiles 및 student_submissions RLS 정책
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
+CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Users can upsert own profile" ON public.profiles;
+CREATE POLICY "Users can upsert own profile" ON public.profiles FOR ALL USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can view own submissions" ON public.student_submissions;
+CREATE POLICY "Users can view own submissions" ON public.student_submissions FOR SELECT USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert own submissions" ON public.student_submissions;
+CREATE POLICY "Users can insert own submissions" ON public.student_submissions FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can delete own submissions" ON public.student_submissions;
+CREATE POLICY "Users can delete own submissions" ON public.student_submissions FOR DELETE USING (auth.uid() = user_id);
 
 -- ==============================================================================
 -- 홍익대학교 기본 데이터 INSERT (SEED DATA)

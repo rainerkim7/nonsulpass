@@ -164,6 +164,57 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ==============================================================================
+-- 4-2. AI 채점 실패 또는 사용자 취소 시 차감된 크레딧 1회 즉시 복구(롤백) RPC 함수
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.refund_grading_credit(
+  p_user_id UUID,
+  p_university TEXT,
+  p_exam_id TEXT,
+  p_question_id TEXT
+)
+RETURNS JSONB AS $$
+DECLARE
+  v_pass_id UUID;
+  v_remaining_credits INT;
+BEGIN
+  -- 1) 가장 최근에 차감된 유효 패스 1건 조회 후 크레딧 +1 복원
+  SELECT id, remaining_credits
+    INTO v_pass_id, v_remaining_credits
+    FROM public.user_passes
+   WHERE user_id = p_user_id
+     AND university = p_university
+     AND is_active = true
+     AND expires_at > now()
+     AND remaining_credits < total_credits
+   ORDER BY updated_at DESC
+   LIMIT 1
+   FOR UPDATE;
+
+  IF v_pass_id IS NOT NULL THEN
+    UPDATE public.user_passes
+       SET remaining_credits = LEAST(total_credits, remaining_credits + 1),
+           updated_at = now()
+     WHERE id = v_pass_id;
+    v_remaining_credits := v_remaining_credits + 1;
+  END IF;
+
+  -- 2) 문항별 시도 횟수(attempt_count) 1회 차감 복원 및 직전 쿨다운 해제
+  UPDATE public.exam_attempt_logs
+     SET attempt_count = GREATEST(0, attempt_count - 1),
+         last_submitted_at = now() - INTERVAL '10 minutes'
+   WHERE user_id = p_user_id
+     AND exam_id = p_exam_id
+     AND question_id = p_question_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'message', '채점 취소/오류로 인해 차감된 크레딧 1회가 정상 복구되었습니다.',
+    'remaining_credits', COALESCE(v_remaining_credits, 0)
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ==============================================================================
 -- 5. Row Level Security (RLS) 정책 설정
 -- ==============================================================================
 ALTER TABLE public.user_passes ENABLE ROW LEVEL SECURITY;

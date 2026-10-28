@@ -23,13 +23,14 @@ import {
   Plus,
   RotateCcw
 } from 'lucide-react'
-import { SEOUL_UNIVERSITIES } from '@/lib/constants/universities'
+import { SEOUL_UNIVERSITIES, type UniversityMeta } from '@/lib/constants/universities'
 import { useAuth } from '@/lib/auth-context'
 
 interface MultiPassPurchaseModalProps {
   isOpen: boolean
   onClose: () => void
   ownedUniversities?: string[] // 이미 활성 패스를 보유하고 있는 대학명 목록
+  universities?: UniversityMeta[] // 동적 확장된 대학 목록 (미전달 시 SEOUL_UNIVERSITIES 기본 사용)
   onSuccess?: () => void
   onPurchase: (
     newUniversities: string[],
@@ -46,6 +47,7 @@ export default function MultiPassPurchaseModal({
   isOpen,
   onClose,
   ownedUniversities = [],
+  universities = SEOUL_UNIVERSITIES,
   onSuccess,
   onPurchase,
 }: MultiPassPurchaseModalProps) {
@@ -87,7 +89,7 @@ export default function MultiPassPurchaseModal({
   }
 
   // 미보유 대학 전체 선택 / 전체 해제
-  const unownedList = SEOUL_UNIVERSITIES.filter((u) => !ownedUniversities.includes(u.name)).map((u) => u.name)
+  const unownedList = universities.filter((u) => !ownedUniversities.includes(u.name)).map((u) => u.name)
   const handleToggleAllUnowned = () => {
     if (selectedUnivs.length === unownedList.length) {
       setSelectedUnivs([])
@@ -226,7 +228,7 @@ export default function MultiPassPurchaseModal({
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                  서울 주요 18개 대학 목록
+                  전체 대학 목록 ({universities.length}개 대학)
                 </label>
                 <span className="text-[11px] text-slate-400">
                   (미보유: 체크하여 신규 패스 추가 / 보유 대학: [+] 클릭)
@@ -251,9 +253,9 @@ export default function MultiPassPurchaseModal({
               )}
             </div>
 
-            {/* 18개 대학 카드 그리드 */}
+            {/* 전체 대학 카드 그리드 */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
-              {SEOUL_UNIVERSITIES.map((univ) => {
+              {universities.map((univ) => {
                 const isOwned = ownedUniversities.includes(univ.name)
                 const isSelected = selectedUnivs.includes(univ.name)
                 const addedCredit = addonCredits[univ.name] || 0

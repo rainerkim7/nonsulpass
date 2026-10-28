@@ -193,7 +193,7 @@ interface ExamWorkspaceProps {
   selectedUniv?: string
   selectedExamId?: string
   initialQuestion?: string
-  onReport: (report?: GradingReportData, questionId?: 'q1' | 'q2') => void
+  onReport: (report?: GradingReportData, questionId?: string) => void
   onBack?: () => void
   onHome?: () => void
 }
@@ -218,6 +218,7 @@ export default function ExamWorkspace({
     remainingCredits,
     hasActivePass,
     consumeCredit,
+    refundCredit,
     grantPass,
     isPurchaseModalOpen,
     openPurchaseModal,
@@ -1171,6 +1172,7 @@ export default function ExamWorkspace({
     }
 
     // 3. 관리자(admin)가 아닌 일반 학생의 경우 크레딧 및 어뷰징(쿨다운/5회 상한) 검증
+    let creditDeducted = false
     if (!isAdmin) {
       // 잔여 크레딧이 0이거나 패스가 없는 경우 결제 모달 오픈
       if (remainingCredits <= 0) {
@@ -1197,6 +1199,7 @@ export default function ExamWorkspace({
         alert(creditResult.message || '채점 크레딧 확인 중 오류가 발생했습니다.')
         return
       }
+      creditDeducted = true
     }
 
     setIsGrading(true)
@@ -1285,14 +1288,19 @@ export default function ExamWorkspace({
         }
       }
 
-      onReport(reportData, activeQuestion as 'q1' | 'q2')
+      onReport(reportData, activeQuestion)
     } catch (err: any) {
+      // 채점 취소 또는 서버 에러 발생 시 이미 차감된 크레딧 1회 즉시 자동 복구(롤백)
+      if (creditDeducted) {
+        await refundCredit(selectedExamId || 'common', activeQuestion)
+      }
+
       if (err.name === 'AbortError') {
-        console.log('채점 요청이 사용자에 의해 안전하게 취소되었습니다.')
+        console.log('채점 요청이 사용자에 의해 안전하게 취소되었으며 크레딧이 복구되었습니다.')
         return
       }
-      console.warn('AI 채점 일시 지연 발생 (팝업창 자동 종료):', err)
-      setGradingNotice('현재 AI 채점 서버 이용량이 많아 일시 지연되었습니다. 작성하신 답안은 안전하게 보존되어 있으니 잠시 후 다시 제출해 주세요.')
+      console.warn('AI 채점 일시 지연 발생 (크레딧 자동 복구 완료):', err)
+      setGradingNotice('현재 AI 채점 서버 이용량이 많아 일시 지연되었습니다. 차감된 크레딧은 자동 복구되었으며, 작성하신 답안은 안전하게 보존되어 있으니 잠시 후 다시 제출해 주세요.')
       setTimeout(() => {
         setGradingNotice(null)
       }, 6000)

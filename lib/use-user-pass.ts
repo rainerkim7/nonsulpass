@@ -120,7 +120,60 @@ export function useUserPass(university?: string) {
   }
 
   /**
-   * 결제 완료 또는 모의 결제 성공 시 패스 DB 즉시 충전 헬퍼
+   * AI 채점 오류 또는 사용자 취소 시 이미 차감된 크레딧 1회 및 시도 횟수를 원상 복구(환불)하는 함수
+   * (DB에 refund_grading_credit RPC가 있으면 우선 호출하고, 아직 미적용 시 직접 테이블 업데이트 폴백)
+   */
+  const refundCredit = async (examId: string, questionId: string): Promise<boolean> => {
+    if (!user || !university) return false
+
+    try {
+      const { error: rpcErr } = await supabase.rpc('refund_grading_credit', {
+        p_user_id: user.id,
+        p_university: university,
+        p_exam_id: examId,
+        p_question_id: questionId,
+      })
+
+      if (rpcErr) {
+        // RPC 미등록 환경을 대비한 직접 복구 폴백
+        if (userPass) {
+          await supabase
+            .from('user_passes')
+            .update({
+              remaining_credits: Math.min(userPass.total_credits, (userPass.remaining_credits || 0) + 1),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', userPass.id)
+        }
+        const { data: logRow } = await supabase
+          .from('exam_attempt_logs')
+          .select('id, attempt_count')
+          .eq('user_id', user.id)
+          .eq('exam_id', examId)
+          .eq('question_id', questionId)
+          .single()
+
+        if (logRow) {
+          await supabase
+            .from('exam_attempt_logs')
+            .update({
+              attempt_count: Math.max(0, (logRow.attempt_count || 1) - 1),
+              last_submitted_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+            })
+            .eq('id', logRow.id)
+        }
+      }
+
+      await fetchPass()
+      return true
+    } catch (err) {
+      console.warn('[useUserPass] 크레딧 환불 복구 중 오류:', err)
+      return false
+    }
+  }
+
+  /**
+   * 결제 완료 또는 모의 결제 성공 시 패스 DB 즉시 충전 및 payment_orders 주문 내역 기록 헬퍼
    */
   const grantPass = async (passType: PassType, credits: number, periodDays: number = 30) => {
     if (!user || !university) return false
@@ -141,6 +194,26 @@ export function useUserPass(university?: string) {
       })
 
       if (error) throw error
+
+      // 결제 주문 내역(payment_orders) 동시 기록 (실패 시 무시하여 패스 부여 보장)
+      const amount = passType === 'standard_30' ? 19800 : passType === 'addon_10' ? 8900 : 4900
+      const productType = passType === 'standard_30' ? 'PASS_30' : passType === 'addon_10' ? 'ADDON_10' : 'ADDON_5'
+      const orderId = `ORD-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
+      try {
+        await supabase.from('payment_orders').insert({
+          order_id: orderId,
+          user_id: user.id,
+          product_type: productType,
+          university,
+          amount,
+          status: 'PAID',
+          pg_provider: 'tosspayments',
+          paid_at: now.toISOString(),
+        })
+      } catch (orderErr) {
+        console.warn('[useUserPass] payment_orders 기록 생략:', orderErr)
+      }
+
       await fetchPass()
       return true
     } catch (err) {
@@ -156,6 +229,7 @@ export function useUserPass(university?: string) {
     isLoading,
     refetchPass: fetchPass,
     consumeCredit,
+    refundCredit,
     grantPass,
     isPurchaseModalOpen,
     openPurchaseModal: () => setIsPurchaseModalOpen(true),
@@ -293,6 +367,43 @@ export function useAllUserPasses() {
 
       const { error } = await supabase.from('user_passes').insert(records)
       if (error) throw error
+
+      // 결제 주문 내역(payment_orders) 일괄 기록
+      try {
+        const datePrefix = now.toISOString().slice(0, 10).replace(/-/g, '')
+        const orderRows: any[] = []
+        newUniversities.forEach((univ) => {
+          orderRows.push({
+            order_id: `ORD-${datePrefix}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+            user_id: user.id,
+            product_type: 'PASS_30',
+            university: univ,
+            amount: 19800,
+            status: 'PAID',
+            pg_provider: 'tosspayments',
+            paid_at: now.toISOString(),
+          })
+        })
+        Object.entries(addonCreditsByUniv).forEach(([univ, credits]) => {
+          if (credits > 0) {
+            orderRows.push({
+              order_id: `ORD-${datePrefix}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+              user_id: user.id,
+              product_type: credits >= 10 ? 'ADDON_10' : 'ADDON_5',
+              university: univ,
+              amount: (credits / 5) * 4900,
+              status: 'PAID',
+              pg_provider: 'tosspayments',
+              paid_at: now.toISOString(),
+            })
+          }
+        })
+        if (orderRows.length > 0) {
+          await supabase.from('payment_orders').insert(orderRows)
+        }
+      } catch (orderErr) {
+        console.warn('[useAllUserPasses] payment_orders 기록 생략:', orderErr)
+      }
 
       await fetchAllPasses()
       return true

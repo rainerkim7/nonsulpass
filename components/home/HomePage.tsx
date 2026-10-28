@@ -5,7 +5,7 @@
  * @description 논술패스 Lab 메인 랜딩 페이지 (히어로, 서울 주요 18개 대학 그리드, 서비스 소개)
  */
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import {
   Sparkles,
@@ -25,7 +25,8 @@ import {
   Clock
 } from 'lucide-react'
 import Brand from '@/components/common/Brand'
-import { SEOUL_UNIVERSITIES, getUniversityId } from '@/lib/constants/universities'
+import { SEOUL_UNIVERSITIES, getUniversityId, type UniversityMeta } from '@/lib/constants/universities'
+import { getAllMergedUniversities } from '@/lib/api/university'
 import { useAuth } from '@/components/AuthGate'
 import MySubmissionsModal from '@/components/mypage/MySubmissionsModal'
 import PassPurchaseModal from '@/components/payment/PassPurchaseModal'
@@ -49,7 +50,21 @@ export default function HomePage({
   const [isPassModalOpen, setIsPassModalOpen] = useState(false)
   const [isMultiPassModalOpen, setIsMultiPassModalOpen] = useState(false)
   const [selectedPassUniv, setSelectedPassUniv] = useState('홍익대학교')
+  const [universitiesList, setUniversitiesList] = useState<UniversityMeta[]>(SEOUL_UNIVERSITIES)
   const { grantPass } = useUserPass(selectedPassUniv)
+
+  // 마운트 시 DB에 등록된 신규 대학 및 활성 상태 실시간 병합 로드
+  useEffect(() => {
+    let isMounted = true
+    getAllMergedUniversities().then((merged) => {
+      if (isMounted && merged && merged.length > 0) {
+        setUniversitiesList(merged)
+      }
+    })
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   // 사용자가 보유한 모든 활성 대학 패스 조회 훅
   const { allPasses, refetchAllPasses, grantMultiplePasses, purchasePassesAndAddons } = useAllUserPasses()
@@ -93,9 +108,9 @@ export default function HomePage({
       <header className="home-topbar">
         <Brand />
         <nav className="home-nav" aria-label="주요 메뉴">
-          <a href="#universities">서울 주요 18개 대학</a>
+          <Link href="/guide">논술 글쓰기</Link>
+          <Link href="/writing">논술 연습장</Link>
           <a href="#service">서비스 안내</a>
-          <a href="#process">이용 방법</a>
         </nav>
         <div className="home-top-actions">
           {isAuthenticated ? (
@@ -336,24 +351,25 @@ export default function HomePage({
         </section>
       )}
 
-      {/* 서울 주요 18개 대학 논술 바로가기 링크 버튼 섹션 */}
+      {/* 대학별 논술 바로가기 링크 버튼 섹션 (DB 연동 동적 확장 지원) */}
       <section className="home-univ-section" id="universities">
         <div className="univ-section-header">
           <div className="univ-title-wrap">
             <span className="univ-badge">
-              <GraduationCap /> 2027 수시 대비 실전 논술
+              <GraduationCap /> 2027 수시 대비 실전 논술 ({universitiesList.length}개 대학)
             </span>
-            <h2 className="univ-title">서울 주요 18개 대학 기출 · 모의논술</h2>
+            <h2 className="univ-title">대학별 논술 기출 · 모의논술</h2>
           </div>
           <p className="univ-subtitle">
             원하는 대학을 클릭하면 해당 대학의 출제 경향 및 실전 논술 시험장으로 즉시 이동합니다.
           </p>
         </div>
         <div className="univ-grid">
-          {SEOUL_UNIVERSITIES.map((univ) => {
-            const isReady = ['hongik', 'khu', 'dongguk'].includes(univ.id)
+          {universitiesList.map((univ) => {
+            const isReady = Boolean(univ.active) || ['hongik', 'khu', 'dongguk'].includes(univ.id)
             const isOwned = ownedUniversityNames.includes(univ.name)
             const passInfo = myPassesByUniv.get(univ.name)
+            const canEnter = isReady || isOwned || isAdmin
 
             return (
               <button
@@ -364,19 +380,23 @@ export default function HomePage({
                     ? 'border-amber-500/70 shadow-md ring-2 ring-amber-500/30 bg-amber-500/10'
                     : isReady
                     ? 'border-blue-500 shadow-sm ring-1 ring-blue-500/20 bg-blue-50/20'
+                    : isAdmin
+                    ? 'border-slate-300 hover:border-indigo-500'
                     : 'opacity-60 cursor-default hover:bg-white hover:border-slate-200 hover:shadow-none'
                 }`}
                 onClick={() => {
-                  if (onSelectUniv) {
+                  if (onSelectUniv && canEnter) {
                     onSelectUniv(univ.id, univ.name)
                   }
                 }}
-                disabled={!isReady && !isOwned}
+                disabled={!canEnter}
                 title={
                   isOwned
                     ? `${univ.name} 패스 보유 (${passInfo?.remainingCredits}회 남음) - 바로 이동`
                     : isReady
                     ? `${univ.name} 논술 분석 및 기출 풀기`
+                    : isAdmin
+                    ? `[관리자] ${univ.name} 페이지 미리보기`
                     : `${univ.name} 논술 데이터 준비 중`
                 }
               >
@@ -531,6 +551,7 @@ export default function HomePage({
         isOpen={isMultiPassModalOpen}
         onClose={() => setIsMultiPassModalOpen(false)}
         ownedUniversities={ownedUniversityNames}
+        universities={universitiesList}
         onPurchase={purchasePassesAndAddons}
         onSuccess={() => {
           refetchAllPasses()

@@ -34,10 +34,10 @@ export async function POST(req: Request) {
 
     const currentFaculty = targetFaculty || tab1_exam?.targetFaculty || '인문·사회계열'
 
-    // 0. 대학 레코드가 없으면 universities 테이블에 생성 또는 업데이트
+    // 0. 대학 레코드가 없으면 universities 테이블에 생성하고, 이미 있으면 is_active: true 활성화 보장
     const { data: existingUniv } = await supabase
       .from('universities')
-      .select('id')
+      .select('id, is_active')
       .eq('id', univId)
       .single()
 
@@ -52,6 +52,11 @@ export async function POST(req: Request) {
         exam_format: '원고지 완결형 서술',
         is_active: true
       })
+    } else if (!existingUniv.is_active) {
+      await supabase
+        .from('universities')
+        .update({ is_active: true })
+        .eq('id', univId)
     }
 
     let savedExamId: string | undefined = undefined

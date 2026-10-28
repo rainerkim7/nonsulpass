@@ -7,6 +7,31 @@ import { supabase } from '@/lib/supabase'
 import { HONGIK_OVERVIEW, HONGIK_TRENDS, HONGIK_RUBRIC, HONGIK_ALL_EXAMS } from '@/data/hongik-data'
 import { KHU_OVERVIEW, KHU_2027_MOCK_EXAM, KHU_ALL_EXAMS } from '@/data/khu-data'
 import { DONGGUK_OVERVIEW, DONGGUK_ALL_EXAMS, DONGGUK_TRENDS, DONGGUK_RUBRIC } from '@/data/dongguk-data'
+import {
+  getUniversityName,
+  mergeUniversitiesWithDb,
+  type UniversityMeta,
+} from '@/lib/constants/universities'
+
+/**
+ * 전체 대학 목록 조회 (기본 프리셋 + DB 등록 신규 대학 + 기출 보유 활성화 상태 통합)
+ */
+export async function getAllMergedUniversities(): Promise<UniversityMeta[]> {
+  try {
+    const [univRes, examsRes] = await Promise.all([
+      supabase.from('universities').select('id, name, is_active, faculty').order('created_at', { ascending: true }),
+      supabase.from('exams').select('univ_id'),
+    ])
+
+    const dbUnivs = univRes.data || []
+    const examUnivIds = Array.from(new Set((examsRes.data || []).map((e: any) => e.univ_id).filter(Boolean)))
+
+    return mergeUniversitiesWithDb(dbUnivs, examUnivIds)
+  } catch (err) {
+    console.warn('[getAllMergedUniversities] DB 병합 조회 실패, 기본 목록 반환:', err)
+    return mergeUniversitiesWithDb([], [])
+  }
+}
 
 export interface UniversityData {
   id: string
@@ -114,7 +139,17 @@ export async function getUniversity(univId: string): Promise<UniversityData> {
           isActive: true,
         }
       }
-      throw new Error(`대학 정보를 찾을 수 없습니다: ${univId}`)
+      // 그 외 신규/기타 대학 기본 규격 반환
+      return {
+        id: univId,
+        name: getUniversityName(univId),
+        faculty: '인문·사회계열',
+        examDuration: '100~120분',
+        totalQuestions: '2~3문항',
+        charPerQuestion: '문항당 800~1,000자',
+        examFormat: '원고지 완결형 서술',
+        isActive: true,
+      }
     }
 
     return {
@@ -153,14 +188,26 @@ export async function getUniversity(univId: string): Promise<UniversityData> {
         isActive: true,
       }
     }
+    if (univId === 'hongik') {
+      return {
+        id: 'hongik',
+        name: HONGIK_OVERVIEW.university,
+        faculty: HONGIK_OVERVIEW.faculty,
+        examDuration: HONGIK_OVERVIEW.examDuration,
+        totalQuestions: HONGIK_OVERVIEW.totalQuestions,
+        charPerQuestion: HONGIK_OVERVIEW.charPerQuestion,
+        examFormat: HONGIK_OVERVIEW.examFormat,
+        isActive: true,
+      }
+    }
     return {
-      id: 'hongik',
-      name: HONGIK_OVERVIEW.university,
-      faculty: HONGIK_OVERVIEW.faculty,
-      examDuration: HONGIK_OVERVIEW.examDuration,
-      totalQuestions: HONGIK_OVERVIEW.totalQuestions,
-      charPerQuestion: HONGIK_OVERVIEW.charPerQuestion,
-      examFormat: HONGIK_OVERVIEW.examFormat,
+      id: univId,
+      name: getUniversityName(univId),
+      faculty: '인문·사회계열',
+      examDuration: '100~120분',
+      totalQuestions: '2~3문항',
+      charPerQuestion: '문항당 800~1,000자',
+      examFormat: '원고지 완결형 서술',
       isActive: true,
     }
   }
@@ -355,11 +402,13 @@ export async function getUniversityRubrics(univId: string): Promise<{
           score: s.rule,
           subDesc: s.subDesc,
         }))
-      : [
+      : univId === 'hongik'
+      ? [
           { faculty: '사범대학 · 예술학과', chip: '인문학 집중', score: '문제 1 가중 · 60점 배점', subDesc: '국어, 문학, 윤리, 역사 제재 중심의 인문학적 독해 및 다각도 관점 대조 능력을 중점 평가합니다.' },
           { faculty: '경영대학 · 경제학부 · 법학부', chip: '사회과학 집중', score: '문제 2 가중 · 문제 1의 2배', subDesc: '경제, 법과 정치 제재의 사회적 원리를 실제 현실 쟁점에 적용하고 실효성 있는 대안을 도출하는 능력을 집중 평가합니다.' },
           { faculty: '캠퍼스자율전공 (인문)', chip: '균형 평가', score: '문제 1: 45점 / 문제 2: 55점', subDesc: '인문학적 비판 사고와 사회과학적 정책 대안 분석 역량을 고르게 종합 평가합니다.' },
         ]
+      : []
 
     const rubrics = rubricsRes.data && rubricsRes.data.length > 0
       ? rubricsRes.data.map((rb: any) => ({
@@ -370,7 +419,9 @@ export async function getUniversityRubrics(univId: string): Promise<{
         }))
       : univId === 'dongguk'
       ? DONGGUK_RUBRIC
-      : HONGIK_RUBRIC
+      : univId === 'hongik'
+      ? HONGIK_RUBRIC
+      : []
 
     return { scoringRules, rubrics }
   } catch (err) {
