@@ -5,6 +5,7 @@
  */
 
 import { NextResponse } from 'next/server'
+import { callGeminiWithFallback } from '@/lib/gemini-client'
 
 export async function POST(req: Request) {
   try {
@@ -138,65 +139,17 @@ ${documentText.trim()}
       shouldParseTab3 ? '탭 3(채점기준)' : null
     ].filter(Boolean).join(', ')}] 항목만 집중 정밀 분석하여 JSON 규격으로 반환하십시오.`
 
-    // Gemini API 호출 (최신 모델 및 503/429 재시도 폴백 지원)
-    const models = ['gemini-flash-latest', 'gemini-pro-latest', 'gemini-3-flash-preview']
-    let resultJson = null
-    let lastError = null
+    // 공통 Gemini 클라이언트 호출 (최신 모델 및 503/429 재시도 폴백 지원)
+    const { text: rawJsonText } = await callGeminiWithFallback({
+      apiKey,
+      parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }],
+      temperature: 0.2,
+      responseMimeType: 'application/json',
+      models: ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3-flash-preview', 'gemini-pro-latest'],
+      retryDelayMs: 1000,
+    })
 
-    for (const model of models) {
-      // 503(Service Unavailable) 또는 429(Rate Limit) 발생 시 1회 재시도
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          if (attempt > 0) {
-            await new Promise(res => setTimeout(res, 1000))
-          }
-
-          const geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [
-                  { role: 'user', parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }
-                ],
-                generationConfig: {
-                  temperature: 0.2,
-                  responseMimeType: 'application/json'
-                }
-              })
-            }
-          )
-
-          if (!geminiRes.ok) {
-            const errText = await geminiRes.text()
-            lastError = new Error(`Model ${model} failed (${geminiRes.status}): ${errText}`)
-            if ((geminiRes.status === 503 || geminiRes.status === 429) && attempt === 0) {
-              continue
-            }
-            break
-          }
-
-          const data = await geminiRes.json()
-          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text
-          if (text) {
-            resultJson = JSON.parse(text)
-            break
-          }
-        } catch (err: any) {
-          lastError = err
-          if (attempt === 0) continue
-        }
-      }
-      if (resultJson) break
-    }
-
-    if (!resultJson) {
-      return NextResponse.json(
-        { error: lastError?.message || '통합 문서 자동 분해 및 분석 생성에 실패했습니다.' },
-        { status: 500 }
-      )
-    }
+    const resultJson = JSON.parse(rawJsonText)
 
     return NextResponse.json({
       success: true,

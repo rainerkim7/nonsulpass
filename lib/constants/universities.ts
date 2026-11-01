@@ -20,13 +20,13 @@ export const SEOUL_UNIVERSITIES: UniversityMeta[] = [
   { id: 'skku', name: '성균관대학교', active: false, desc: '인문계열 · 사회과학계열 (3문항, 100분)' },
   { id: 'hanyang', name: '한양대학교', active: false, desc: '인문계열 · 상경계열 (수리논술)' },
   { id: 'cau', name: '중앙대학교', active: false, desc: '인문콘텐츠·사범 · 경영경제 (수리논술)' },
-  { id: 'khu', name: '경희대학교', active: true, desc: '인문·체육/사회계열 (2~3문항, 120분, 2,000자)' },
+  { id: 'khu', name: '경희대학교', active: false, desc: '인문·체육/사회계열 (2~3문항, 120분, 2,000자)' },
   { id: 'hufs', name: '한국외국어대', active: false, desc: '인문계열 · 사회계열' },
   { id: 'uos', name: '서울시립대', active: false, desc: '인문계열 (공통)' },
   { id: 'ewha', name: '이화여자대', active: false, desc: '인문계열 I · 인문계열 II (수리논술)' },
   { id: 'konkuk', name: '건국대학교', active: false, desc: '인문사회 I · 인문사회 II (수리논술)' },
-  { id: 'dongguk', name: '동국대학교', active: true, desc: '인문계열 (3문항, 100분, 1,500자)' },
-  { id: 'hongik', name: '홍익대학교', active: true, desc: '인문·사회계열 (2문항, 120분, 1,600자)' },
+  { id: 'dongguk', name: '동국대학교', active: false, desc: '인문계열 (3문항, 100분, 1,500자)' },
+  { id: 'hongik', name: '홍익대학교', active: false, desc: '인문·사회계열 (2문항, 120분, 1,600자)' },
   { id: 'sookmyung', name: '숙명여자대', active: false, desc: '인문계열 (공통)' },
   { id: 'soongsil', name: '숭실대학교', active: false, desc: '인문계열 · 경상계열 (수리논술)' },
   { id: 'kookmin', name: '국민대학교', active: false, desc: '인문계열 (공통)' },
@@ -80,6 +80,14 @@ export function registerDynamicUniversities(univs: UniversityMeta[]) {
 }
 
 /**
+ * 런타임 동적 대학 캐시에서 삭제된 대학 제거
+ */
+export function unregisterDynamicUniversity(univId: string) {
+  if (!univId) return
+  dynamicUnivCache.delete(univId)
+}
+
+/**
  * 기본 프리셋 대학 목록과 DB에서 조회된 대학 목록을 중복 없이 병합하여 반환
  */
 export function mergeUniversitiesWithDb(
@@ -91,11 +99,10 @@ export function mergeUniversitiesWithDb(
   const result: UniversityMeta[] = []
   const seenIds = new Set<string>()
 
-  // 1. 기본 대학 목록 먼저 반영 (DB 활성 상태 또는 시험 존재 여부 반영)
+  // 1. 기본 대학 목록 먼저 반영 (오직 DB 활성 상태 또는 등록된 시험 존재 여부로만 활성화 판정)
   SEOUL_UNIVERSITIES.forEach((preset) => {
     const dbRow = dbMap.get(preset.id)
     const isReady =
-      Boolean(preset.active) ||
       Boolean(dbRow?.is_active) ||
       activeExamSet.has(preset.id)
 

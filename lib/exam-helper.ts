@@ -4,9 +4,6 @@
  */
 
 import { supabase } from '@/lib/supabase'
-import { HONGIK_ALL_EXAMS } from '@/data/hongik-data'
-import { KHU_2027_MOCK_EXAM, KHU_2027_MOCK_SOCIAL_EXAM, KHU_2026_REAL_SOCIAL_EXAM } from '@/data/khu-data'
-import { DONGGUK_2027_MOCK_EXAM } from '@/data/dongguk-data'
 
 export interface QuestionPassage {
   badge: string
@@ -38,6 +35,9 @@ export interface QuestionData {
   title: string
   note: string
   limit: string
+  points?: number
+  scoringCriteria?: any[]
+  keyArguments?: string[]
   placeholder: string
   passages: QuestionPassage[]
   tipTitle: string
@@ -67,13 +67,14 @@ export function normalizeQuestionsData(rawQuestions: any, examMeta?: any): Quest
 
   // 1. 이미 { q1: {...}, q2: {...} } 형태인 경우
   if (rawQuestions.q1 && rawQuestions.q1.passages) {
-    if (examMeta?.pdf_url || examMeta?.pdfUrl) {
-      const pUrl = examMeta?.pdf_url || examMeta?.pdfUrl || ''
-      const pName = examMeta?.pdf_name || examMeta?.pdfName || ''
+    if (examMeta?.pdf_url !== undefined || examMeta?.pdfUrl !== undefined) {
+      const pUrl = examMeta?.pdf_url ?? examMeta?.pdfUrl ?? ''
+      const pName = examMeta?.pdf_name ?? examMeta?.pdfName ?? ''
       Object.keys(rawQuestions).forEach(k => {
         if (rawQuestions[k]) {
-          if (!rawQuestions[k].pdfUrl) rawQuestions[k].pdfUrl = pUrl
-          if (!rawQuestions[k].pdfName) rawQuestions[k].pdfName = pName
+          // DB 테이블 컬럼(exams.pdf_url)에 최신 PDF가 설정되어 있으면 최우선 동기화
+          if (pUrl || !rawQuestions[k].pdfUrl) rawQuestions[k].pdfUrl = pUrl
+          if (pName || !rawQuestions[k].pdfName) rawQuestions[k].pdfName = pName
         }
       })
     }
@@ -131,6 +132,8 @@ export function normalizeQuestionsData(rawQuestions: any, examMeta?: any): Quest
         }
       }
 
+      const numericPoints = Number(q.points ?? q.score) || 50
+
       map[qKey] = {
         id: qKey,
         label: cleanLabel.replace(/【|】/g, '').trim(),
@@ -138,6 +141,9 @@ export function normalizeQuestionsData(rawQuestions: any, examMeta?: any): Quest
         title: titleNumber,
         note: cleanNote,
         limit: q.limit || q.targetLength || '800±100자',
+        points: numericPoints,
+        scoringCriteria: Array.isArray(q.scoringCriteria) ? q.scoringCriteria : undefined,
+        keyArguments: Array.isArray(q.keyArguments) ? q.keyArguments : undefined,
         placeholder: q.placeholder || `여기에 ${cleanLabel} 답안을 작성하세요.`,
         passages: passages,
         tipTitle: q.tipTitle || '출제위원 핵심 채점 팁',
@@ -155,7 +161,7 @@ export function normalizeQuestionsData(rawQuestions: any, examMeta?: any): Quest
           if (Array.isArray(q.scoringCriteria) && q.scoringCriteria.length > 0) {
             return {
               facultyWeight: examMeta?.targetFaculty || examMeta?.target_faculty || '인문·사회계열',
-              totalScore: `${q.points || q.score || 50}점 만점 (정밀채점 100점 환산)`,
+              totalScore: `${numericPoints}점 만점 (정밀채점 100점 환산)`,
               items: [
                 {
                   category: '채점 기준 등급별 평가 요소',
@@ -172,19 +178,9 @@ export function normalizeQuestionsData(rawQuestions: any, examMeta?: any): Quest
               ]
             }
           }
-          // 로컬 프리셋에 정의된 공식 채점표가 있다면 연결 (경희대 2026 사회계열 등)
-          try {
-            const fallbackMap = getQuestionsData(examMeta?.id)
-            const fallbackQ = fallbackMap?.[qKey]
-            if (fallbackQ?.rubric?.items && fallbackQ.rubric.items.length > 0) {
-              return fallbackQ.rubric
-            }
-          } catch (e) {
-            // fallback 무시
-          }
           return {
             facultyWeight: examMeta?.targetFaculty || examMeta?.target_faculty || '인문·사회계열',
-            totalScore: `${q.points || q.score || 50}점 만점 (정밀채점 100점 환산)`,
+            totalScore: `${numericPoints}점 만점 (정밀채점 100점 환산)`,
             items: [],
             deductions: [
               '지정 글자 수(±10% 범위) 미달 또는 초과 시 감점',
@@ -192,8 +188,8 @@ export function normalizeQuestionsData(rawQuestions: any, examMeta?: any): Quest
             ]
           }
         })(),
-        pdfUrl: q.pdfUrl || q.pdf_url || examMeta?.pdf_url || examMeta?.pdfUrl || '',
-        pdfName: q.pdfName || q.pdf_name || examMeta?.pdf_name || examMeta?.pdfName || ''
+        pdfUrl: examMeta?.pdf_url || examMeta?.pdfUrl || q.pdfUrl || q.pdf_url || '',
+        pdfName: examMeta?.pdf_name || examMeta?.pdfName || q.pdfName || q.pdf_name || ''
       }
     })
     return map as QuestionsMap
@@ -225,126 +221,38 @@ export async function fetchExamQuestionsFromDb(examId: string): Promise<Question
 }
 
 /**
- * 선택된 시험 ID에 따라 해당 시험의 문항, 제시문 및 채점기준 데이터를 반환하는 헬퍼 함수 (로컬 Fallback 프리셋)
+ * DB 비동기 조회 완료 전 초기 렌더링(블랭크 방지) 및 빈 시험 폴백을 위한 경량 표준 스켈레톤 반환 함수
  */
-export function getQuestionsData(examId?: string): QuestionsMap {
-  const targetId = examId || 'hongik-2026-humanities-real'
-
-  // 1. 동국대학교 시험인 경우 동국대 전용 문항/제시문 데이터셋 반환
-  if (targetId.startsWith('dongguk') || targetId.includes('dongguk')) {
-    return DONGGUK_2027_MOCK_EXAM.questions as unknown as QuestionsMap
-  }
-
-  // 2. 경희대학교 시험인 경우 경희대 전용 문항/제시문 데이터셋 반환 (사회계열 vs 인문체육계열 분기)
-  if (targetId.startsWith('khu') || targetId.includes('khu')) {
-    if (targetId.includes('2026') && (targetId.includes('social') || targetId.includes('사회'))) {
-      return KHU_2026_REAL_SOCIAL_EXAM.questions as unknown as QuestionsMap
+export function getQuestionsData(_examId?: string): QuestionsMap {
+  const createEmptyQuestion = (num: number): QuestionData => ({
+    id: `q${num}`,
+    label: `문항 ${num}`,
+    tag: `문항 ${num}`,
+    title: `【문제 ${num}】`,
+    note: '제시문을 불러오는 중이거나 등록된 발문이 없습니다.',
+    limit: '800±100자',
+    placeholder: `여기에 문항 ${num} 답안을 작성하세요.`,
+    passages: [],
+    tipTitle: '출제위원 핵심 채점 팁',
+    tipDesc: '제시문의 핵심 논점을 정확히 비교·분석하고 완결된 문장으로 서술하세요.',
+    modelAnswer: '등록된 예시(모범) 답안이 없습니다.',
+    modalTitle: `문항 ${num} 공식 예시(모범) 답안`,
+    modalPill: `문항 ${num}`,
+    modalLength: '800자 내외 충족',
+    modalCallout: '💡 출제 핵심 포인트: 핵심 논점 분석 및 논리적 서술',
+    rubric: {
+      facultyWeight: '인문·사회계열',
+      totalScore: '50점 만점 (정밀채점 100점 환산)',
+      items: [],
+      deductions: [
+        '지정 글자 수(±10% 범위) 미달 또는 초과 시 감점',
+        '제시문 문장을 그대로 복사하거나 핵심 논점을 오독한 경우 감점'
+      ]
     }
-    if (targetId.includes('social') || targetId.includes('사회')) {
-      return KHU_2027_MOCK_SOCIAL_EXAM.questions as unknown as QuestionsMap
-    }
-    return KHU_2027_MOCK_EXAM.questions as unknown as QuestionsMap
-  }
-
-  // 3. 홍익대학교 및 기타 기본 시험 데이터 매핑
-  const foundExam = HONGIK_ALL_EXAMS.find((e) => e.id === targetId) || HONGIK_ALL_EXAMS[1]
-
-  const q1Data = foundExam.questions[0]
-  const hasQ2 = foundExam.questions && foundExam.questions.length > 1
-  const q2Data = hasQ2 ? foundExam.questions[1] : foundExam.questions[0]
+  })
 
   return {
-    q1: {
-      id: 'q1',
-      label: q1Data.title ? q1Data.title.split('.')[0].trim() : '문항 1',
-      tag: `${foundExam.year} · ${foundExam.title}`,
-      title: q1Data.title || `【문항 1】 ${foundExam.title}`,
-      note: q1Data.questionText || '',
-      limit: q1Data.targetLength || '800±100자',
-      placeholder: `여기에 문항 1 답안을 작성하세요. (${q1Data.targetLength || '800자 내외'})`,
-      passages: (q1Data.passages || []).map((p) => ({
-        badge: p.title ? `${p.id} ${p.title}` : p.id,
-        paragraphs: p.content ? p.content.split('\n\n').filter(Boolean) : []
-      })),
-      tipTitle: '출제위원 핵심 채점 팁',
-      tipDesc: q1Data.keyArguments?.join(' · ') || '제시문의 핵심 논점을 정확히 비교·분석하고 완결된 문장으로 서술하세요.',
-      modelAnswer: q1Data.modelAnswer || '모범 답안을 준비 중입니다.',
-      modalTitle: `${q1Data.title || '문항 1'} 공식 예시(모범) 답안`,
-      modalPill: `${foundExam.year} 문항 1`,
-      modalLength: `${q1Data.targetLength || '800자 내외'} 충족`,
-      modalCallout: `💡 출제 핵심 포인트: ${q1Data.keyArguments?.slice(0, 2).join(' / ') || '핵심 논점 분석'}`,
-      rubric: {
-        facultyWeight: foundExam.targetFaculty,
-        totalScore: `${q1Data.points || 50}점 만점 (정밀채점 100점 환산)`,
-        items: [
-          {
-            category: '채점 기준 등급별 평가 요소',
-            subItems: (q1Data.scoringCriteria || []).map((sc) => ({
-              name: `[${sc.grade}등급 (${sc.range})]`,
-              desc: sc.description,
-              points: sc.range
-            }))
-          },
-          {
-            category: '출제위원 핵심 평가 논점 및 배점 가이드',
-            subItems: (q1Data.keyArguments || []).map((ka, idx) => ({
-              name: `핵심 평가 영역 ${idx + 1}`,
-              desc: ka,
-              points: ''
-            }))
-          }
-        ],
-        deductions: [
-          '지정 글자 수(±10% 범위) 미달 또는 초과 시 감점',
-          '제시문 문장을 그대로 복사하거나 핵심 논점을 오독한 경우 감점'
-        ]
-      }
-    },
-    q2: {
-      id: 'q2',
-      label: q2Data.title ? q2Data.title.split('.')[0].trim() : '문항 2',
-      tag: `${foundExam.year} · ${foundExam.title}`,
-      title: q2Data.title || `【문항 2】 ${foundExam.title}`,
-      note: q2Data.questionText || '',
-      limit: q2Data.targetLength || '800±100자',
-      placeholder: `여기에 문항 2 답안을 작성하세요. (${q2Data.targetLength || '800자 내외'})`,
-      passages: (q2Data.passages || []).map((p) => ({
-        badge: p.title ? `${p.id} ${p.title}` : p.id,
-        paragraphs: p.content ? p.content.split('\n\n').filter(Boolean) : []
-      })),
-      tipTitle: '출제위원 핵심 채점 팁',
-      tipDesc: q2Data.keyArguments?.join(' · ') || '제시문의 핵심 논점을 종합하고 대안적 해결 방안을 논술하세요.',
-      modelAnswer: q2Data.modelAnswer || '모범 답안을 준비 중입니다.',
-      modalTitle: `${q2Data.title || '문항 2'} 공식 예시(모범) 답안`,
-      modalPill: `${foundExam.year} 문항 2`,
-      modalLength: `${q2Data.targetLength || '800자 내외'} 충족`,
-      modalCallout: `💡 출제 핵심 포인트: ${q2Data.keyArguments?.slice(0, 2).join(' / ') || '핵심 논점 분석'}`,
-      rubric: {
-        facultyWeight: foundExam.targetFaculty,
-        totalScore: `${q2Data.points || 50}점 만점 (정밀채점 100점 환산)`,
-        items: [
-          {
-            category: '채점 기준 등급별 평가 요소',
-            subItems: (q2Data.scoringCriteria || []).map((sc) => ({
-              name: `[${sc.grade}등급 (${sc.range})]`,
-              desc: sc.description,
-              points: sc.range
-            }))
-          },
-          {
-            category: '출제위원 핵심 평가 논점 및 배점 가이드',
-            subItems: (q2Data.keyArguments || []).map((ka, idx) => ({
-              name: `핵심 평가 영역 ${idx + 1}`,
-              desc: ka,
-              points: ''
-            }))
-          }
-        ],
-        deductions: [
-          '지정 글자 수(±10% 범위) 미달 또는 초과 시 감점',
-          '제시문 문장을 그대로 복사하거나 핵심 논점을 오독한 경우 감점'
-        ]
-      }
-    }
+    q1: createEmptyQuestion(1),
+    q2: createEmptyQuestion(2)
   }
 }

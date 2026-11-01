@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { callGeminiWithFallback } from '@/lib/gemini-client'
 
 /**
  * @file app/api/ocr-answer/route.ts
@@ -76,70 +77,21 @@ export async function POST(req: Request) {
 
     parts.push({ text: promptText })
 
-    // Gemini API 호출 (최신 고성능 비전 모델 라인업 및 503/429 장애 자동 재시도)
-    const models = [
-      'gemini-2.5-flash',
-      'gemini-1.5-flash',
-      'gemini-flash-latest',
-      'gemini-pro-latest'
-    ]
+    // 공통 Gemini 클라이언트 호출 (비전 모델 폴백 및 503/429 자동 재시도)
+    const { text: rawText, modelUsed: usedModel } = await callGeminiWithFallback({
+      apiKey,
+      parts,
+      temperature: 0.1,
+    })
 
-    let resultText = ''
-    let lastError: any = null
-    let usedModel = ''
-
-    for (const model of models) {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          if (attempt > 0) {
-            await new Promise(res => setTimeout(res, 800))
-          }
-
-          const geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{ role: 'user', parts }],
-                generationConfig: {
-                  temperature: 0.1
-                }
-              })
-            }
-          )
-
-          if (!geminiRes.ok) {
-            const errText = await geminiRes.text()
-            lastError = new Error(`Model ${model} failed (${geminiRes.status}): ${errText}`)
-            if ((geminiRes.status === 503 || geminiRes.status === 429) && attempt === 0) {
-              console.warn(`[OCR API] ${model} 과부하 (${geminiRes.status}): 0.8초 후 재시도`)
-              continue
-            }
-            break
-          }
-
-          const data = await geminiRes.json()
-          const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text
-          if (rawText && typeof rawText === 'string') {
-            // 마크다운 코드블록 백틱이나 불필요한 앞뒤 공백 제거
-            resultText = rawText
-              .replace(/^```[a-zA-Z]*\n/, '')
-              .replace(/\n```$/, '')
-              .trim()
-            usedModel = model
-            break
-          }
-        } catch (err: any) {
-          lastError = err
-        }
-      }
-
-      if (resultText) break
-    }
+    // 마크다운 코드블록 백틱이나 불필요한 앞뒤 공백 제거
+    const resultText = rawText
+      .replace(/^```[a-zA-Z]*\n/, '')
+      .replace(/\n```$/, '')
+      .trim()
 
     if (!resultText) {
-      throw lastError || new Error('Gemini API로부터 텍스트를 추출하지 못했습니다.')
+      throw new Error('Gemini API로부터 텍스트를 추출하지 못했습니다.')
     }
 
     return NextResponse.json({

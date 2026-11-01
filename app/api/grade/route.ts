@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { GradingReportData } from '@/types/grading'
+import { callGeminiWithFallback } from '@/lib/gemini-client'
 
 export async function POST(req: Request) {
   try {
@@ -127,11 +128,6 @@ ${studentAnswer}
 ${modelAnswer || '제시문과 발문의 논리적 일치 여부로 판단'}
 `
 
-    // Gemini API 호출 (채점 점수 일관성 유지를 위해 기존 모델 라인업 보존)
-    const modelsToTry = ['gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-3.5-flash-lite']
-    let rawResponseText = ''
-    let lastError: any = null
-
     const finalSystemPrompt = customSystemPrompt && customSystemPrompt.trim()
       ? customSystemPrompt.trim()
       : systemPrompt
@@ -140,66 +136,14 @@ ${modelAnswer || '제시문과 발문의 논리적 일치 여부로 판단'}
       ? customUserPrompt.trim()
       : userPrompt
 
-    for (const model of modelsToTry) {
-      // 각 모델당 최대 2회 시도: 503(과부하) 또는 429(속도제한) 발생 시 0.8초 대기 후 즉시 1회 자동 재시도
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [
-                  { role: 'user', parts: [{ text: `${finalSystemPrompt}\n\n${finalUserPrompt}` }] }
-                ],
-                generationConfig: {
-                  temperature: 0.2, // 엄밀하고 일관된 채점을 위해 낮은 온도 설정
-                  responseMimeType: 'application/json'
-                }
-              })
-            }
-          )
-
-          if (!geminiRes.ok) {
-            const errBody = await geminiRes.text()
-            lastError = new Error(`Model ${model} failed (${geminiRes.status}): ${errBody}`)
-
-            // 구글 서버 일시적 과부하(503) 또는 속도제한(429) 수신 시 첫 번째 시도라면 0.8초 대기 후 재시도
-            if ((geminiRes.status === 503 || geminiRes.status === 429) && attempt === 0) {
-              console.warn(`[AI 정밀 채점] ${model} 모델 일시적 과부하 (${geminiRes.status}): 0.8초 후 자동 재시도합니다...`)
-              await new Promise((resolve) => setTimeout(resolve, 800))
-              continue
-            }
-            // 재시도에도 실패했거나 다른 상태코드(400 등)인 경우 루프 종료 후 다음 모델 시도
-            break
-          }
-
-          const data = await geminiRes.json()
-          const textCandidate = data?.candidates?.[0]?.content?.parts?.[0]?.text
-          if (textCandidate) {
-            rawResponseText = textCandidate
-            break
-          }
-        } catch (err) {
-          lastError = err
-          // 네트워크 일시 오류 시 첫 번째 시도라면 0.8초 대기 후 재시도
-          if (attempt === 0) {
-            await new Promise((resolve) => setTimeout(resolve, 800))
-            continue
-          }
-        }
-      }
-
-      // 채점 결과 텍스트를 정상 획득했다면 추가 모델 시도를 중단하고 루프 탈출
-      if (rawResponseText) {
-        break
-      }
-    }
-
-    if (!rawResponseText) {
-      throw lastError || new Error('Gemini API로부터 응답을 받지 못했습니다.')
-    }
+    // 공통 Gemini 클라이언트 호출 (존재하지 않는 모델 404 지연 제거 및 503/429 자동 재시도)
+    const { text: rawResponseText } = await callGeminiWithFallback({
+      apiKey,
+      parts: [{ text: `${finalSystemPrompt}\n\n${finalUserPrompt}` }],
+      temperature: 0.2,
+      responseMimeType: 'application/json',
+      models: ['gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-flash-latest'],
+    })
 
     // 마크다운 백틱 등이 포함되어 있을 경우 정제
     let cleanJson = rawResponseText.trim()

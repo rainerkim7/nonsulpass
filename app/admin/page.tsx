@@ -21,6 +21,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Plus,
+  Trash2,
+  Lock,
   X
 } from 'lucide-react'
 
@@ -36,9 +38,11 @@ import {
   UNIVERSITY_FACULTIES,
   getUniversityName,
   registerDynamicUniversities,
+  unregisterDynamicUniversity,
   type UniversityMeta,
 } from '@/lib/constants/universities'
 import { useAuth } from '@/components/AuthGate'
+import { supabase } from '@/lib/supabase'
 
 // 브라우저 로컬 스토리지 키 (직전 선택 대학 기억)
 const STORAGE_KEY = 'nonsulpass_admin_selected_univ'
@@ -48,7 +52,7 @@ function AdminConsoleContent() {
   const searchParams = useSearchParams()
 
   // 관리자 권한 확인 (admin 계정 여부)
-  const { isAdmin, isLoading: isAuthLoading } = useAuth()
+  const { user, isAdmin, isLoading: isAuthLoading } = useAuth()
 
   // 전체 관리 대상 대학 목록 상태 (기본 프리셋 + DB 추가 대학 병합)
   const [univList, setUnivList] = useState<UniversityMeta[]>(UNIVERSITIES)
@@ -60,6 +64,12 @@ function AdminConsoleContent() {
   const [newUnivFaculty, setNewUnivFaculty] = useState<string>('인문계열 (공통)')
   const [newUnivDuration, setNewUnivDuration] = useState<string>('120분')
   const [isAddingUniv, setIsAddingUniv] = useState<boolean>(false)
+
+  // 대학 삭제 관리자 비밀번호 재확인 모달 상태
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false)
+  const [deleteAdminPassword, setDeleteAdminPassword] = useState<string>('')
+  const [deletePasswordError, setDeletePasswordError] = useState<string | null>(null)
+  const [isDeletingUniv, setIsDeletingUniv] = useState<boolean>(false)
 
   // 1. 현재 선택된 대학 상태: URL 파라미터(?univ=...) -> localStorage -> 'hongik' 순으로 우선 복원
   const paramUniv = searchParams.get('univ')
@@ -254,6 +264,77 @@ function AdminConsoleContent() {
     }
   }
 
+  // 대학 삭제 모달 열기 핸들러
+  const handleOpenDeleteModal = () => {
+    setDeleteAdminPassword('')
+    setDeletePasswordError(null)
+    setIsDeleteModalOpen(true)
+  }
+
+  // 관리자 비밀번호 검증 후 현재 선택된 대학 삭제 실행 핸들러
+  const handleConfirmDeleteUniversity = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!deleteAdminPassword.trim()) {
+      setDeletePasswordError('관리자 계정 비밀번호를 입력해 주세요.')
+      return
+    }
+
+    if (!user?.email) {
+      setDeletePasswordError('현재 로그인된 관리자 계정 정보를 확인할 수 없습니다.')
+      return
+    }
+
+    const targetObj = univList.find((u) => u.id === selectedUniv)
+    const targetName = targetObj?.name || getUniversityName(selectedUniv)
+    const isPreset = UNIVERSITIES.some((u) => u.id === selectedUniv)
+
+    setIsDeletingUniv(true)
+    setDeletePasswordError(null)
+
+    try {
+      // 1. Supabase Auth로 관리자 비밀번호 실시간 재검증
+      const { error: authErr } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: deleteAdminPassword.trim(),
+      })
+
+      if (authErr) {
+        setDeletePasswordError('관리자 비밀번호가 일치하지 않습니다. 다시 확인해 주세요.')
+        setIsDeletingUniv(false)
+        return
+      }
+
+      // 2. 비밀번호 검증 통과 시 대학 및 하위 데이터 일괄 삭제 API 호출
+      const res = await fetch(`/api/admin/universities?id=${encodeURIComponent(selectedUniv)}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || '대학 삭제 실패')
+      }
+
+      unregisterDynamicUniversity(selectedUniv)
+      await fetchUniversityList()
+
+      setIsDeleteModalOpen(false)
+      setDeleteAdminPassword('')
+
+      // 삭제된 대학이 현재 선택되어 있었다면 기본 대학(hongik)으로 포커스 전환
+      const fallbackUniv = selectedUniv === 'hongik' ? 'khu' : 'hongik'
+      handleSelectUniv(fallbackUniv)
+      showNotice(
+        'success',
+        isPreset
+          ? `${targetName}의 DB 데이터가 초기화되었습니다.`
+          : `${targetName}(${selectedUniv}) 대학이 목록과 DB에서 완전히 삭제되었습니다.`
+      )
+    } catch (err: any) {
+      setDeletePasswordError(err.message || '대학 삭제 중 오류가 발생했습니다.')
+    } finally {
+      setIsDeletingUniv(false)
+    }
+  }
+
   // 대학 변경 시 전체 데이터 로드 및 기본 계열 설정
   useEffect(() => {
     fetchExams(selectedUniv)
@@ -433,6 +514,29 @@ function AdminConsoleContent() {
                   >
                     <Plus size={14} />
                     새 대학 추가
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenDeleteModal}
+                    disabled={isDeletingUniv}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #fecaca',
+                      background: '#fef2f2',
+                      color: '#dc2626',
+                      fontSize: '12.5px',
+                      fontWeight: 700,
+                      cursor: isDeletingUniv ? 'not-allowed' : 'pointer',
+                      opacity: isDeletingUniv ? 0.6 : 1
+                    }}
+                    title={`현재 선택된 [${currentUnivName}] 대학 및 데이터를 삭제합니다`}
+                  >
+                    <Trash2 size={14} />
+                    {isDeletingUniv ? '삭제 중...' : '대학 삭제'}
                   </button>
                   <span className="admin-badge-green">
                     ● 전체 {univList.length}개 대학 관리 중
@@ -707,6 +811,156 @@ function AdminConsoleContent() {
                   }}
                 >
                   {isAddingUniv ? '등록 중...' : '대학 등록 및 선택'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 대학 삭제 시 관리자(admin) 비밀번호 재확인 모달 */}
+      {isDeleteModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 80,
+            background: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '460px',
+              background: '#ffffff',
+              borderRadius: '16px',
+              border: '1px solid #fecaca',
+              boxShadow: '0 20px 50px rgba(15, 23, 42, 0.25)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                padding: '18px 22px',
+                borderBottom: '1px solid #fee2e2',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: '#fef2f2',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Lock size={18} color="#dc2626" />
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#991b1b' }}>
+                  대학 데이터 삭제 · 관리자 비밀번호 확인
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isDeletingUniv && setIsDeleteModalOpen(false)}
+                style={{ border: 0, background: 'transparent', cursor: 'pointer', color: '#991b1b' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleConfirmDeleteUniversity}
+              style={{ padding: '22px', display: 'flex', flexDirection: 'column', gap: '16px' }}
+            >
+              <div
+                style={{
+                  padding: '14px 16px',
+                  borderRadius: '10px',
+                  background: '#fff1f2',
+                  border: '1px solid #fecdd3',
+                  fontSize: '13px',
+                  lineHeight: 1.6,
+                  color: '#881337',
+                }}
+              >
+                <strong style={{ display: 'block', fontSize: '14px', marginBottom: '4px', color: '#9f1239' }}>
+                  ⚠️ 삭제 대상: {currentUnivName} ({selectedUniv})
+                </strong>
+                삭제를 진행하면 현재 등록된{' '}
+                <strong>
+                  기출·모의 문제({exams.length}건), 출제경향({trends.length}건), 채점기준({scoringRules.length + rubrics.length}건)
+                </strong>
+                이 DB에서 일괄 영구 삭제되며 복구할 수 없습니다.
+              </div>
+
+              <div>
+                <label
+                  htmlFor="admin-delete-password"
+                  style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}
+                >
+                  관리자({user?.email || 'admin'}) 비밀번호 입력 *
+                </label>
+                <input
+                  id="admin-delete-password"
+                  type="password"
+                  value={deleteAdminPassword}
+                  onChange={(e) => {
+                    setDeleteAdminPassword(e.target.value)
+                    if (deletePasswordError) setDeletePasswordError(null)
+                  }}
+                  placeholder="현재 로그인된 관리자 비밀번호를 입력하세요"
+                  autoFocus
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${deletePasswordError ? '#ef4444' : '#cbd5e1'}`,
+                    fontSize: '13.5px',
+                  }}
+                />
+                {deletePasswordError && (
+                  <p style={{ margin: '6px 0 0', fontSize: '12px', fontWeight: 700, color: '#dc2626' }}>
+                    ❌ {deletePasswordError}
+                  </p>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+                <button
+                  type="button"
+                  disabled={isDeletingUniv}
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  style={{
+                    padding: '9px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#475569',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={isDeletingUniv}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    border: 0,
+                    background: '#dc2626',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: isDeletingUniv ? 'not-allowed' : 'pointer',
+                    opacity: isDeletingUniv ? 0.65 : 1,
+                  }}
+                >
+                  {isDeletingUniv ? '비밀번호 검증 및 삭제 중...' : '비밀번호 확인 및 삭제'}
                 </button>
               </div>
             </form>

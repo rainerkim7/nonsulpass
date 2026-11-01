@@ -18,22 +18,16 @@ import {
   ArrowRight,
   Loader2,
   X,
-  Copy,
   Sparkles,
   BookOpen,
   Edit3,
   Save,
-  Plus,
   Trash2,
-  Image as ImageIcon,
-  UploadCloud,
   CheckCircle2,
-  ShieldCheck,
-  ChevronUp,
-  ChevronDown,
   FileUp,
-  RefreshCw,
-  Coins
+  Coins,
+  Terminal,
+  Camera
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Brand from '@/components/common/Brand'
@@ -47,147 +41,9 @@ import ExamInlineEditor from './admin/ExamInlineEditor'
 import PromptInspectorModal from './PromptInspectorModal'
 import PassPurchaseModal from '@/components/payment/PassPurchaseModal'
 import { useUserPass } from '@/lib/use-user-pass'
-import { Terminal, Camera } from 'lucide-react'
-
-/**
- * 제시문 및 모범답안 단락 포맷팅 렌더러
- * - 마크다운 이미지 `![alt](url)` 감지 시 고해상도 반응형 이미지 카드로 렌더링
- * - 수학 수식/조건식 블록 전용 스타일 적용
- */
-function renderFormattedParagraph(para: string, key: React.Key) {
-  if (!para) return null
-  const trimmed = para.trim()
-  if (!trimmed) return null
-
-  // 1. 단락 내에 마크다운 이미지(![alt](url))가 포함되어 있는 경우 (단독 또는 복합 텍스트 혼합)
-  if (trimmed.includes('![') && /!\[(.*?)\]\((.*?)\)/.test(trimmed)) {
-    const parts = trimmed.split(/(!\[.*?\]\(.*?\))/g).filter(Boolean)
-    return (
-      <React.Fragment key={key}>
-        {parts.map((part, pIdx) => {
-          const imgMatch = part.trim().match(/^!\[(.*?)\]\((.*?)\)$/)
-          if (imgMatch) {
-            const altText = imgMatch[1].trim()
-            const imgUrl = imgMatch[2].trim()
-            return (
-              <div
-                key={`${String(key)}-img-${pIdx}`}
-                style={{
-                  margin: '16px 0',
-                  padding: '16px',
-                  background: '#ffffff',
-                  borderRadius: '12px',
-                  border: '1px solid #e2e8f0',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-              >
-                <img
-                  src={imgUrl}
-                  alt={altText || '문항 도표/그래프'}
-                  style={{
-                    maxWidth: '100%',
-                    height: 'auto',
-                    maxHeight: '420px',
-                    borderRadius: '8px',
-                    objectFit: 'contain'
-                  }}
-                />
-                {altText && (
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>
-                    ▲ {altText}
-                  </span>
-                )}
-              </div>
-            )
-          }
-
-          const partTrimmed = part.trim()
-          if (!partTrimmed) return null
-
-          // 소문항 번호((1), (2), (3) 등)나 발문 기호로 시작하는 문장은 일반 본문으로 통일
-          const isSubQuestion = /^\(\d+\)|^\([a-zA-Z]\)|^※|^【/.test(partTrimmed)
-          const isMath = !isSubQuestion && (
-            partTrimmed.includes('y =') ||
-            partTrimmed.includes('∫') ||
-            (partTrimmed.startsWith('① ') && partTrimmed.includes('=')) ||
-            (partTrimmed.startsWith('② ') && partTrimmed.includes('='))
-          )
-
-          if (isMath) {
-            return (
-              <div
-                key={`${String(key)}-txt-${pIdx}`}
-                style={{
-                  margin: '10px 0',
-                  padding: '12px 16px',
-                  background: '#f8fafc',
-                  borderRadius: '8px',
-                  border: '1px solid #e2e8f0',
-                  fontFamily: "'Pretendard', -apple-system, sans-serif",
-                  fontSize: '13.5px',
-                  lineHeight: 1.65,
-                  color: '#1e293b',
-                  whiteSpace: 'pre-wrap'
-                }}
-              >
-                {partTrimmed}
-              </div>
-            )
-          }
-
-          return (
-            <p key={`${String(key)}-txt-${pIdx}`} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75, marginBottom: '12px' }}>
-              {partTrimmed}
-            </p>
-          )
-        })}
-      </React.Fragment>
-    )
-  }
-
-  // 2. 수식 및 함수 다중행 블록 감지 (소문항 번호로 시작하는 문장은 제외하여 (1), (2), (3) 위계 통일)
-  const isSubQuestion = /^\(\d+\)|^\([a-zA-Z]\)|^※|^【/.test(trimmed)
-  const isMathBlock = !isSubQuestion && (
-    trimmed.includes('y =') ||
-    trimmed.includes('∫') ||
-    (trimmed.startsWith('① ') && trimmed.includes('=')) ||
-    (trimmed.startsWith('② ') && trimmed.includes('='))
-  )
-
-  if (isMathBlock) {
-    return (
-      <div
-        key={key}
-        style={{
-          margin: '10px 0',
-          padding: '12px 16px',
-          background: '#f8fafc',
-          borderRadius: '8px',
-          border: '1px solid #e2e8f0',
-          fontFamily: "'Pretendard', -apple-system, sans-serif",
-          fontSize: '13.5px',
-          lineHeight: 1.65,
-          color: '#1e293b',
-          whiteSpace: 'pre-wrap'
-        }}
-      >
-        {trimmed}
-      </div>
-    )
-  }
-
-  // 3. 일반 본문 단락
-  return (
-    <p key={key} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75, marginBottom: '12px' }}>
-      {trimmed}
-    </p>
-  )
-}
+import { renderFormattedParagraph } from './PassageContentRenderer'
+import SubmissionHistorySection, { type SubmissionHistoryItem } from './SubmissionHistorySection'
+import { ModelAnswerModal, RubricModal, GradingLoadingOverlay } from './ExamReferenceModals'
 
 interface ExamWorkspaceProps {
   selectedUniv?: string
@@ -207,16 +63,14 @@ export default function ExamWorkspace({
   onHome,
 }: ExamWorkspaceProps) {
   // 로그인 사용자 및 관리자 권한 확인
-  const { isAdmin, user, userDisplayName, openAuthModal } = useAuth()
+  const { isAdmin, user, openAuthModal } = useAuth()
 
   // 현재 응시 중인 대학명 (props와 동기화)
   const currentUniv = selectedUniv || (selectedExamId?.startsWith('khu') ? '경희대학교' : selectedExamId?.startsWith('dongguk') ? '동국대학교' : '홍익대학교')
 
   // 대학 패스 및 잔여 채점 크레딧 상태 관리
   const {
-    userPass,
     remainingCredits,
-    hasActivePass,
     consumeCredit,
     refundCredit,
     grantPass,
@@ -230,7 +84,7 @@ export default function ExamWorkspace({
   // 문항 데이터 DB 저장 진행 상태
   const [isSavingExam, setIsSavingExam] = useState<boolean>(false)
   // 특정 제시문 도표 이미지 업로드 진행 상태 (제시문 인덱스)
-  const [uploadingPassageIdx, setUploadingPassageIdx] = useState<number | null>(null)
+  const [, setUploadingPassageIdx] = useState<number | null>(null)
   // 관리자 전용 상단 알림 배너
   const [adminNotice, setAdminNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   // 파일 선택 창 참조
@@ -271,18 +125,6 @@ export default function ExamWorkspace({
   const [showPromptInspector, setShowPromptInspector] = useState<boolean>(false)
 
   // 📝 수험생 이전 제출 및 첨삭 이력 상태
-  interface SubmissionHistoryItem {
-    id: string
-    exam_id: string
-    exam_title: string
-    question_label: string
-    student_answer: string
-    char_count: number
-    total_score: number
-    status_verdict: string
-    grading_report: GradingReportData
-    created_at: string
-  }
   const [submissionHistory, setSubmissionHistory] = useState<SubmissionHistoryItem[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false)
   // 현재 선택되어 에디터에 로드된 첨삭 이력 ID (localStorage 하이브리드 연동으로 언마운트 시에도 영구 기억)
@@ -736,8 +578,12 @@ export default function ExamWorkspace({
         return next
       })
 
-      // 이전 파일이 로컬 디스크 파일인 경우 정리
-      if (oldPdfUrl && oldPdfUrl !== result.url && oldPdfUrl.startsWith('/exams/pdf/')) {
+      // 이전 파일이 로컬 디스크 또는 Supabase Storage 파일인 경우 정리
+      if (
+        oldPdfUrl &&
+        oldPdfUrl !== result.url &&
+        (oldPdfUrl.startsWith('/exams/pdf/') || oldPdfUrl.includes('/exam-assets/'))
+      ) {
         try {
           await fetch('/api/admin/upload-exam-pdf', {
             method: 'DELETE',
@@ -745,7 +591,7 @@ export default function ExamWorkspace({
             body: JSON.stringify({ fileUrl: oldPdfUrl })
           })
         } catch (cleanupErr) {
-          console.warn('이전 PDF 디스크 정리 실패 (무시):', cleanupErr)
+          console.warn('이전 PDF 스토리지 정리 실패 (무시):', cleanupErr)
         }
       }
 
@@ -789,8 +635,8 @@ export default function ExamWorkspace({
       })
     }
 
-    // 서버 디스크에서 실제 PDF 파일 삭제 및 정리
-    if (prevPdfUrl && prevPdfUrl.startsWith('/exams/pdf/')) {
+    // 서버 디스크 또는 Supabase Storage에서 실제 PDF 파일 삭제 및 정리
+    if (prevPdfUrl && (prevPdfUrl.startsWith('/exams/pdf/') || prevPdfUrl.includes('/exam-assets/'))) {
       try {
         await fetch('/api/admin/upload-exam-pdf', {
           method: 'DELETE',
@@ -798,7 +644,7 @@ export default function ExamWorkspace({
           body: JSON.stringify({ fileUrl: prevPdfUrl })
         })
       } catch (cleanupErr) {
-        console.warn('디스크 PDF 파일 삭제 실패 (무시):', cleanupErr)
+        console.warn('스토리지 PDF 파일 삭제 실패 (무시):', cleanupErr)
       }
     }
 
@@ -1887,192 +1733,16 @@ export default function ExamWorkspace({
           </div>
 
           {/* 📝 수험생 이전 제출 및 첨삭 이력 (날짜순 정렬 카드 리스트) */}
-          <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px dashed #cbd5e1' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Clock3 size={16} className="text-blue-600" />
-                <h4 style={{ margin: 0, fontSize: '14.5px', fontWeight: 800, color: '#0f172a' }}>
-                  {currentQ.label} 제출 및 첨삭 이력 ({submissionHistory.length}회)
-                </h4>
-              </div>
-              <span style={{ fontSize: '11.5px', color: '#64748b' }}>
-                작성 날짜순 (최신순)
-              </span>
-            </div>
-
-            {isLoadingHistory ? (
-              <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '13px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <Loader2 size={18} className="animate-spin text-blue-600 mx-auto mb-1.5" />
-                <span>제출 이력을 확인하는 중입니다...</span>
-              </div>
-            ) : !user ? (
-              <div style={{ padding: '18px 20px', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
-                <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#64748b' }}>
-                  로그인하시면 작성한 답안과 채점 결과가 자동 보관되어 언제든 다시 불러와 첨삭을 이어갈 수 있습니다.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => openAuthModal('login')}
-                  style={{
-                    padding: '6px 14px',
-                    borderRadius: '6px',
-                    backgroundColor: '#2563eb',
-                    color: '#ffffff',
-                    border: 'none',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  로그인 / 무료 회원가입
-                </button>
-              </div>
-            ) : submissionHistory.length === 0 ? (
-              <div style={{ padding: '24px 20px', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
-                <FileText size={24} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
-                <p style={{ margin: '0 0 4px', fontSize: '13.5px', fontWeight: 700, color: '#334155' }}>
-                  아직 {currentQ.label}에 제출된 답안이 없습니다.
-                </p>
-                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
-                  답안을 작성하신 후 하단의 <strong>[실전 AI 채점 제출]</strong>을 클릭하시면, 작성 답안과 채점 리포트가 이곳에 차례로 보관됩니다.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {submissionHistory.map((item, index) => {
-                  const formattedDate = new Date(item.created_at).toLocaleString('ko-KR', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                  const isPass = item.total_score >= 82
-                  // 현재 선택된 첨삭 이력인지 엄격하게 판별 (미선택 시 null이므로 모든 카드 해제됨)
-                  const isSelected = selectedSubmissionId === item.id
-
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => handleToggleSubmissionCard(item)}
-                      title={isSelected ? '클릭하여 선택 해제 (답안 작성창 초기화)' : '클릭하여 이 답안을 작성창에 불러오기'}
-                      style={{
-                        backgroundColor: isSelected ? '#f0f7ff' : '#ffffff',
-                        borderRadius: '12px',
-                        padding: '13px 18px',
-                        border: isSelected ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                        boxShadow: isSelected
-                          ? '0 4px 14px rgba(37, 99, 235, 0.14)'
-                          : '0 1px 3px rgba(0,0,0,0.02)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        flexWrap: 'wrap',
-                        gap: '10px',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isSelected) {
-                          e.currentTarget.style.borderColor = '#93c5fd'
-                          e.currentTarget.style.backgroundColor = '#f8fafc'
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isSelected) {
-                          e.currentTarget.style.borderColor = '#e2e8f0'
-                          e.currentTarget.style.backgroundColor = '#ffffff'
-                        }
-                      }}
-                    >
-                      {/* 좌측 메타 정보 (회차 뱃지, 선택 상태 뱃지, 날짜, 글자 수) */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: 800,
-                            padding: '2.5px 8px',
-                            borderRadius: '6px',
-                            backgroundColor: isSelected ? '#2563eb' : '#f1f5f9',
-                            color: isSelected ? '#ffffff' : '#475569',
-                          }}
-                        >
-                          #{submissionHistory.length - index}회차
-                        </span>
-                        {isSelected && (
-                          <span
-                            style={{
-                              fontSize: '11px',
-                              fontWeight: 800,
-                              padding: '2.5px 8px',
-                              borderRadius: '6px',
-                              backgroundColor: '#dbeafe',
-                              color: '#1d4ed8',
-                              border: '1px solid #bfdbfe',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                          >
-                            <Check size={12} strokeWidth={2.5} /> 선택됨
-                          </span>
-                        )}
-                        <span style={{ fontSize: '12px', color: '#64748b' }}>
-                          {formattedDate}
-                        </span>
-                        <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>·</span>
-                        <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
-                          {item.char_count}자
-                        </span>
-                      </div>
-
-                      {/* 우측 점수, 합격 판정 & 삭제 액션 */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: 800,
-                            padding: '2.5px 8px',
-                            borderRadius: '6px',
-                            backgroundColor: isPass ? '#dcfce7' : '#fee2e2',
-                            color: isPass ? '#15803d' : '#b91c1c',
-                          }}
-                        >
-                          {item.status_verdict || (isPass ? '합격권' : '도전 권장')}
-                        </span>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '2px' }}>
-                          <strong style={{ fontSize: '16px', fontWeight: 900, color: isPass ? '#1d4ed8' : '#e11d48' }}>
-                            {item.total_score}
-                          </strong>
-                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>/ 100점</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteSubmission(item.id, e)}
-                          title="기록 삭제"
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#cbd5e1',
-                            cursor: 'pointer',
-                            padding: '4px',
-                            marginLeft: '2px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            borderRadius: '4px'
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-                          onMouseLeave={(e) => (e.currentTarget.style.color = '#cbd5e1')}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+          <SubmissionHistorySection
+            questionLabel={currentQ.label}
+            submissionHistory={submissionHistory}
+            isLoadingHistory={isLoadingHistory}
+            isLoggedIn={Boolean(user)}
+            selectedSubmissionId={selectedSubmissionId}
+            onOpenLogin={() => openAuthModal('login')}
+            onToggleCard={handleToggleSubmissionCard}
+            onDeleteSubmission={handleDeleteSubmission}
+          />
         </section>
       </div>
 
@@ -2124,153 +1794,21 @@ export default function ExamWorkspace({
       </footer>
 
       {/* 공식 모범답안 모달 */}
-      {showModelModal && (
-        <div className="model-modal-overlay" onClick={() => setShowModelModal(false)}>
-          <div className="model-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="model-modal-header">
-              <div className="model-modal-title">
-                <span className="model-modal-pill">{currentQ.modalPill}</span>
-                <h3>{currentQ.modalTitle}</h3>
-                <p>{currentQ.modalLength}</p>
-              </div>
-              <button
-                type="button"
-                className="model-modal-close"
-                onClick={() => setShowModelModal(false)}
-                aria-label="닫기"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="model-modal-body">
-              <div className="model-modal-callout">{currentQ.modalCallout}</div>
-              <div className="model-modal-text">
-                {currentQ.modelAnswer.split('\n\n').map((para, idx) =>
-                  renderFormattedParagraph(para, `model-${idx}`)
-                )}
-              </div>
-            </div>
-            <div className="model-modal-footer">
-              <button
-                type="button"
-                className="model-footer-btn-copy"
-                onClick={() => {
-                  navigator.clipboard.writeText(currentQ.modelAnswer)
-                  alert('모범답안이 클립보드에 복사되었습니다.')
-                }}
-              >
-                <Copy size={13} /> 모범답안 복사
-              </button>
-              <button
-                type="button"
-                className="model-footer-btn-apply"
-                onClick={() => {
-                  if (currentAnswer.trim() && !confirm('작성 중인 답안이 모범답안으로 대체됩니다. 계속하시겠습니까?')) {
-                    return
-                  }
-                  handleAnswerChange(currentQ.modelAnswer)
-                  setShowModelModal(false)
-                }}
-              >
-                답안지에 불러오기
-              </button>
-              <button
-                type="button"
-                className="model-footer-btn-close"
-                onClick={() => setShowModelModal(false)}
-              >
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ModelAnswerModal
+        isOpen={showModelModal}
+        onClose={() => setShowModelModal(false)}
+        currentQ={currentQ}
+        currentAnswer={currentAnswer}
+        onApplyAnswer={handleAnswerChange}
+      />
 
       {/* 공식 채점 기준표 팝업 모달 */}
-      {showRubricModal && (
-        <div className="model-modal-overlay" onClick={() => setShowRubricModal(false)}>
-          <div className="rubric-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="model-modal-header">
-              <div className="model-modal-title">
-                <span className="model-modal-pill">{currentQ.modalPill || currentQ.label} 공식 채점표</span>
-                <h3>{currentQ.tag || `${currentUniv} 논술`} {currentQ.label} 채점 기준표</h3>
-                <p>{currentUniv} 입학처 공식 출제 문항카드 평가 기준 원문 반영</p>
-              </div>
-              <button
-                type="button"
-                className="model-modal-close"
-                onClick={() => setShowRubricModal(false)}
-                aria-label="닫기"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="rubric-modal-body">
-              <div className="rubric-faculty-badge">
-                ⚖️ <strong>단과대학별 가중 배점 안내:</strong> {currentQ.rubric.facultyWeight}
-              </div>
-
-              <div className="rubric-table-wrap">
-                {(!currentQ.rubric.items || currentQ.rubric.items.length === 0) ? (
-                  <div style={{ padding: '28px 20px', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1', color: '#475569', margin: '8px 0' }}>
-                    <p style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px', color: '#1e293b' }}>
-                      📋 문항별 세부 루브릭 준비 중
-                    </p>
-                    <p style={{ fontSize: '13.5px', margin: 0, lineHeight: 1.6 }}>
-                      본 문항은 대학 공식 <strong>모범답안, 제시문 핵심 논점 및 규정 분량(±10%)</strong>을 기준으로 AI 채점관의 블라인드 정밀 채점과 1:1 맞춤 첨삭이 정상 진행됩니다.
-                    </p>
-                  </div>
-                ) : (
-                  <table className="rubric-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: '24%' }}>평가 영역</th>
-                        <th style={{ width: '20%' }}>평가 대상</th>
-                        <th style={{ width: '44%' }}>세부 채점 기준 및 핵심 도출 내용</th>
-                        <th style={{ width: '12%', textAlign: 'center' }}>배점</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {currentQ.rubric.items.map((sec, sIdx) =>
-                        sec.subItems.map((sub, subIdx) => (
-                          <tr key={`${sIdx}-${subIdx}`}>
-                            {subIdx === 0 && (
-                              <td rowSpan={sec.subItems.length} className="rubric-sec-title">
-                                {sec.category}
-                              </td>
-                            )}
-                            <td className="rubric-item-name">{sub.name}</td>
-                            <td className="rubric-item-desc">{sub.desc}</td>
-                            <td className="rubric-item-points">{sub.points}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              <div className="rubric-deduction-card">
-                <h4>⚠️ 출제위원 감점 유의사항 (공통)</h4>
-                <ul>
-                  {currentQ.rubric.deductions.map((d, dIdx) => (
-                    <li key={dIdx}>{d}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-            <div className="model-modal-footer">
-              <button
-                type="button"
-                className="model-footer-btn-close"
-                onClick={() => setShowRubricModal(false)}
-              >
-                확인 및 닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <RubricModal
+        isOpen={showRubricModal}
+        onClose={() => setShowRubricModal(false)}
+        currentUniv={currentUniv}
+        currentQ={currentQ}
+      />
 
       {/* 🔍 관리자 전용 채점 프롬프트 검사 및 실시간 튜닝 모달 */}
       <PromptInspectorModal
@@ -2317,63 +1855,13 @@ export default function ExamWorkspace({
       />
 
       {/* AI 채점 진행 오버레이 모달 */}
-      {isGrading && (
-        <div className="grading-loading-overlay">
-          <div className="grading-loading-card">
-            <div className="grading-spinner-wrap">
-              <div className="grading-spinner-ring" />
-              <Sparkles className="grading-spinner-icon" />
-            </div>
-            <h3 className="grading-loading-title">출제위원 AI가 정밀 채점 중입니다</h3>
-            <p className="grading-loading-desc">
-              공식 문항 채점 기준표 및 감점 방지 원칙에 입각하여 학생 답안을 꼼꼼하게 대조·평가하고 있습니다.
-            </p>
-            <div className="grading-steps-list">
-              <div className={`grading-step-row ${gradingStep >= 1 ? 'active' : ''}`}>
-                <span className="grading-step-dot" />
-                <span>1단계: 발문 요구조건 부합도 및 제시문 독해 분석</span>
-              </div>
-              <div className={`grading-step-row ${gradingStep >= 2 ? 'active' : ''}`}>
-                <span className="grading-step-dot" />
-                <span>2단계: 대학 공식 채점 기준표 항목별 배점 산출</span>
-              </div>
-              <div className={`grading-step-row ${gradingStep >= 3 ? 'active' : ''}`}>
-                <span className="grading-step-dot" />
-                <span>3단계: 감점 요인 적발 및 1:1 합격자 수준 첨삭(Rewrite) 생성</span>
-              </div>
-            </div>
-
-            {/* 20초 이상 응답 지연 시 계속 기다리기 / 취소 선택 옵션 */}
-            {isGradingDelayed && (
-              <div className="grading-delay-box">
-                <div className="grading-delay-header">
-                  <Clock3 className="grading-delay-icon" />
-                  <span>분석량이 많아 심층 채점이 진행 중입니다</span>
-                </div>
-                <p className="grading-delay-desc">
-                  공식 채점 기준 대조 및 1:1 맞춤 첨삭문 생성에 시간이 조금 더 소요되고 있습니다. 계속 기다리시거나 취소 후 답안으로 돌아가실 수 있습니다.
-                </p>
-                <div className="grading-delay-actions">
-                  <button
-                    type="button"
-                    className="grading-btn-wait"
-                    onClick={handleKeepWaiting}
-                  >
-                    계속 기다리기
-                  </button>
-                  <button
-                    type="button"
-                    className="grading-btn-cancel"
-                    onClick={handleCancelGrading}
-                  >
-                    취소하고 답안으로 돌아가기
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <GradingLoadingOverlay
+        isGrading={isGrading}
+        gradingStep={gradingStep}
+        isGradingDelayed={isGradingDelayed}
+        onKeepWaiting={handleKeepWaiting}
+        onCancelGrading={handleCancelGrading}
+      />
 
       {/* 💳 대학별 30일 마스터 패스 및 채점권 결제 모달 */}
       <PassPurchaseModal

@@ -19,10 +19,7 @@ import {
   Lightbulb,
   Coins,
   Target,
-  PlusCircle,
-  Calendar,
-  CheckCircle2,
-  Clock
+  PlusCircle
 } from 'lucide-react'
 import Brand from '@/components/common/Brand'
 import { SEOUL_UNIVERSITIES, getUniversityId, type UniversityMeta } from '@/lib/constants/universities'
@@ -49,7 +46,7 @@ export default function HomePage({
   const [isMySubmissionsOpen, setIsMySubmissionsOpen] = useState(false)
   const [isPassModalOpen, setIsPassModalOpen] = useState(false)
   const [isMultiPassModalOpen, setIsMultiPassModalOpen] = useState(false)
-  const [selectedPassUniv, setSelectedPassUniv] = useState('홍익대학교')
+  const [selectedPassUniv] = useState('홍익대학교')
   const [universitiesList, setUniversitiesList] = useState<UniversityMeta[]>(SEOUL_UNIVERSITIES)
   const { grantPass } = useUserPass(selectedPassUniv)
 
@@ -67,7 +64,7 @@ export default function HomePage({
   }, [])
 
   // 사용자가 보유한 모든 활성 대학 패스 조회 훅
-  const { allPasses, refetchAllPasses, grantMultiplePasses, purchasePassesAndAddons } = useAllUserPasses()
+  const { allPasses, refetchAllPasses, purchasePassesAndAddons } = useAllUserPasses()
 
   // 대학별 패스 및 크레딧 집계 (중복 구매 시 합산 및 최장 만료일 계산)
   const myPassesByUniv = useMemo(() => {
@@ -366,7 +363,7 @@ export default function HomePage({
         </div>
         <div className="univ-grid">
           {universitiesList.map((univ) => {
-            const isReady = Boolean(univ.active) || ['hongik', 'khu', 'dongguk'].includes(univ.id)
+            const isReady = Boolean(univ.active)
             const isOwned = ownedUniversityNames.includes(univ.name)
             const passInfo = myPassesByUniv.get(univ.name)
             const canEnter = isReady || isOwned || isAdmin

@@ -20,8 +20,7 @@ import {
   GraduationCap,
   CheckSquare,
   Square,
-  Plus,
-  RotateCcw
+  Plus
 } from 'lucide-react'
 import { SEOUL_UNIVERSITIES, type UniversityMeta } from '@/lib/constants/universities'
 import { useAuth } from '@/lib/auth-context'

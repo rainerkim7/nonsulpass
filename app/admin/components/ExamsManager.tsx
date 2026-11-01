@@ -43,6 +43,8 @@ export interface QuestionEditItem {
   points: number | string
   modelAnswer: string
   passages: PassageItem[]
+  /** 답안 작성 페이지(문제 편집 모드) 및 올인원 추출기에서 설정된 세부 채점표/팁 등 부가 속성 무손실 보존 */
+  [key: string]: any
 }
 
 export interface ExamItem {
@@ -166,17 +168,28 @@ export default function ExamsManager({
   // 기출문제 수정 모달 열기 핸들러
   const handleOpenEditModal = (exam: ExamItem) => {
     setModalMode('edit')
-    // 1. 기존 questions 데이터 정규화 (올인원 추출기 규격 및 수동 등록 규격 완벽 호환)
+    // 배점 숫자 파싱 헬퍼 (points/score 숫자 필드 또는 rubric.totalScore 문자열에서 추출)
+    const extractPoints = (q: any): number => {
+      const direct = Number(q?.points ?? q?.score)
+      if (!Number.isNaN(direct) && direct > 0) return direct
+      const fromTotalScore = parseInt(String(q?.rubric?.totalScore || ''), 10)
+      if (!Number.isNaN(fromTotalScore) && fromTotalScore > 0) return fromTotalScore
+      return 50
+    }
+
+    // 1. 기존 questions 데이터 정규화 (올인원 추출기, 수동 등록, 답안 작성 페이지 인라인 편집 규격 100% 무손실 호환)
     let parsedQuestions: QuestionEditItem[] = []
     if (Array.isArray(exam.questions) && exam.questions.length > 0) {
       parsedQuestions = exam.questions.map((q: any, idx: number) => ({
+        ...q,
         id: q.id || idx + 1,
         title: q.title || `【문제 ${idx + 1}】`,
         questionText: q.questionText || q.note || '',
         targetLength: q.targetLength || q.limit || '800±100자',
-        points: Number(q.points ?? q.score) || 50,
+        points: extractPoints(q),
         modelAnswer: q.modelAnswer || '',
         passages: (q.passages || []).map((p: any, pIdx: number) => ({
+          ...p,
           id: p.id || p.badge || `[${String.fromCharCode(65 + pIdx)}]`,
           content: Array.isArray(p.paragraphs) ? p.paragraphs.join('\n\n') : (p.content || p.text || ''),
           source: p.source || ''
@@ -186,13 +199,15 @@ export default function ExamsManager({
       parsedQuestions = Object.keys(exam.questions).map((key, idx) => {
         const q = exam.questions[key]
         return {
+          ...q,
           id: idx + 1,
           title: q.title || `【문제 ${idx + 1}】`,
           questionText: q.questionText || q.note || '',
           targetLength: q.targetLength || q.limit || '800±100자',
-          points: Number(q.points ?? q.score) || 50,
+          points: extractPoints(q),
           modelAnswer: q.modelAnswer || '',
           passages: (q.passages || []).map((p: any, pIdx: number) => ({
+            ...p,
             id: p.id || p.badge || `[${String.fromCharCode(65 + pIdx)}]`,
             content: Array.isArray(p.paragraphs) ? p.paragraphs.join('\n\n') : (p.content || p.text || ''),
             source: p.source || ''
@@ -441,26 +456,39 @@ export default function ExamsManager({
       const endpoint = '/api/admin/exams'
       const method = isEdit ? 'PUT' : 'POST'
 
-      // 올인원 추출기 규격 및 수동 등록 규격 양방향 100% 매칭 정규화
-      const normalizedQuestions = (examModalForm.questions || []).map((q, idx) => ({
-        id: q.id || idx + 1,
-        title: q.title || `【문제 ${idx + 1}】`,
-        label: `문제 ${idx + 1}`,
-        questionText: q.questionText,
-        // 양방향 호환 속성 동시 저장 (점수, 글자수 요건)
-        points: Number(q.points) || 50,
-        score: Number(q.points) || 50,
-        targetLength: q.targetLength || '800±100자',
-        limit: q.targetLength || '800±100자',
-        modelAnswer: q.modelAnswer || '',
-        passages: (q.passages || []).map((p, pIdx) => ({
-          id: p.id || `[${String.fromCharCode(65 + pIdx)}]`,
-          badge: p.id || `[${String.fromCharCode(65 + pIdx)}]`,
-          content: p.content || '',
-          text: p.content || '',
-          source: p.source || ''
-        }))
-      }))
+      // 올인원 추출기 규격, 수동 등록 규격 및 답안 작성 페이지(문제 편집 모드) 규격 양방향 100% 무손실 정규화
+      const normalizedQuestions = (examModalForm.questions || []).map((q, idx) => {
+        const numericPts = Number(q.points) || 50
+        return {
+          ...q,
+          id: q.id || idx + 1,
+          title: q.title || `【문제 ${idx + 1}】`,
+          label: q.label || `문제 ${idx + 1}`,
+          questionText: q.questionText,
+          note: q.questionText,
+          // 양방향 호환 속성 동시 저장 (점수, 글자수 요건)
+          points: numericPts,
+          score: numericPts,
+          targetLength: q.targetLength || '800±100자',
+          limit: q.targetLength || '800±100자',
+          modelAnswer: q.modelAnswer || '',
+          passages: (q.passages || []).map((p, pIdx) => {
+            const rawContent = p.content || ''
+            return {
+              ...p,
+              id: p.id || `[${String.fromCharCode(65 + pIdx)}]`,
+              badge: p.id || `[${String.fromCharCode(65 + pIdx)}]`,
+              content: rawContent,
+              text: rawContent,
+              paragraphs: rawContent
+                .split(/\r?\n\r?\n/)
+                .map((s: string) => s.trim())
+                .filter(Boolean),
+              source: p.source || ''
+            }
+          })
+        }
+      })
 
       const res = await fetch(endpoint, {
         method,

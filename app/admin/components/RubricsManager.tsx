@@ -16,8 +16,7 @@ import {
   Trash2,
   Save,
   X,
-  ListPlus,
-  Layers
+  ListPlus
 } from 'lucide-react'
 import { UNIVERSITY_EXAM_TRACKS } from '@/lib/constants/universities'
 

@@ -110,3 +110,57 @@ export async function POST(req: Request) {
   }
 }
 
+/**
+ * 3. 대학 및 연관된 기출·출제경향·채점기준 데이터 일괄 삭제 (DELETE)
+ */
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    let univId = searchParams.get('id')
+
+    if (!univId) {
+      const body = await req.json().catch(() => ({}))
+      univId = body.id
+    }
+
+    if (!univId) {
+      return NextResponse.json(
+        { error: '삭제할 대학 식별자(id)가 누락되었습니다.' },
+        { status: 400 }
+      )
+    }
+
+    const cleanId = String(univId).trim()
+
+    // 1) 연관 하위 테이블 데이터 먼저 정리 (ON DELETE CASCADE 보완)
+    await Promise.all([
+      supabase.from('exams').delete().eq('univ_id', cleanId),
+      supabase.from('university_trends').delete().eq('univ_id', cleanId),
+      supabase.from('scoring_rules').delete().eq('univ_id', cleanId),
+      supabase.from('university_rubrics').delete().eq('univ_id', cleanId),
+    ])
+
+    // 2) universities 마스터 레코드 삭제
+    const { error } = await supabase
+      .from('universities')
+      .delete()
+      .eq('id', cleanId)
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      deletedId: cleanId,
+      message: `대학(${cleanId}) 및 등록된 모든 기출·경향·채점기준 데이터가 삭제되었습니다.`,
+    })
+  } catch (err: any) {
+    console.error('[DELETE /api/admin/universities] 오류:', err)
+    return NextResponse.json(
+      { error: err.message || '대학 삭제 중 서버 오류가 발생했습니다.' },
+      { status: 500 }
+    )
+  }
+}
+

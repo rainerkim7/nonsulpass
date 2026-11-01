@@ -15,13 +15,10 @@ import {
   UploadCloud,
   CheckCircle2,
   Trash2,
-  Layers,
-  Award,
-  BookOpen,
   CheckSquare,
   Image as ImageIcon
 } from 'lucide-react'
-import { UNIVERSITY_FACULTIES, UNIVERSITIES } from '@/lib/constants/universities'
+import { UNIVERSITY_FACULTIES } from '@/lib/constants/universities'
 import {
   uploadExamImage,
   cleanImageAlt,

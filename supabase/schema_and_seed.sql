@@ -153,6 +153,36 @@ CREATE POLICY "Users can insert own submissions" ON public.student_submissions F
 DROP POLICY IF EXISTS "Users can delete own submissions" ON public.student_submissions;
 CREATE POLICY "Users can delete own submissions" ON public.student_submissions FOR DELETE USING (auth.uid() = user_id);
 
+-- ------------------------------------------------------------------------------
+-- 8. Supabase Storage 버킷 ('exam-assets': 문제지 원본 PDF 및 도표 이미지 영구 저장소) 설정
+--    * public = true 버킷이므로 별도 SELECT 정책 없이도 Public URL 열람이 가능하며,
+--      SELECT 정책을 제외함으로써 외부 클라이언트의 전체 파일 목록 조회(list) 경고를 방지합니다.
+-- ------------------------------------------------------------------------------
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('exam-assets', 'exam-assets', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+-- 기존 광범위한 SELECT / ALL 정책 제거 (파일 목록 노출 경고 해결)
+DROP POLICY IF EXISTS "Public Read Exam Assets" ON storage.objects;
+DROP POLICY IF EXISTS "Admin Manage Exam Assets" ON storage.objects;
+DROP POLICY IF EXISTS "Admin Insert Exam Assets" ON storage.objects;
+DROP POLICY IF EXISTS "Admin Update Exam Assets" ON storage.objects;
+DROP POLICY IF EXISTS "Admin Delete Exam Assets" ON storage.objects;
+
+-- 업로드(INSERT), 덮어쓰기(UPDATE), 삭제(DELETE) 권한만 개별 부여
+CREATE POLICY "Admin Insert Exam Assets"
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'exam-assets');
+
+CREATE POLICY "Admin Update Exam Assets"
+  ON storage.objects FOR UPDATE
+  USING (bucket_id = 'exam-assets')
+  WITH CHECK (bucket_id = 'exam-assets');
+
+CREATE POLICY "Admin Delete Exam Assets"
+  ON storage.objects FOR DELETE
+  USING (bucket_id = 'exam-assets');
+
 -- ==============================================================================
 -- 홍익대학교 기본 데이터 INSERT (SEED DATA)
 -- ==============================================================================

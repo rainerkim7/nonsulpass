@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useRef } from 'react'
-import { FileText, UploadCloud, ExternalLink, Trash2, Loader2, CheckCircle2 } from 'lucide-react'
+import { FileText, UploadCloud, ExternalLink, Trash2, Loader2 } from 'lucide-react'
 
 interface ExamPdfUploaderProps {
   univId: string
