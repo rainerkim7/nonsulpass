@@ -65,7 +65,145 @@ export function useUserPass(university?: string) {
   }, [fetchPass])
 
   /**
-   * AI 채점 제출 전 DB 원자적 크레딧 차감 RPC 호출 (쿨다운 & 5회 상한 검증 포함)
+   * 관리자가 설정한 AI 채점 운영 정책(재제출 쿨다운 분 · 문항당 최대 응시횟수)을 실시간 DB에서 조회하는 헬퍼
+   */
+  const fetchActiveGradingPolicy = async (): Promise<{
+    cooldownMinutes: number
+    maxAttempts: number
+  }> => {
+    try {
+      const { data } = await supabase
+        .from('universities')
+        .select('exam_duration, total_questions')
+        .eq('id', '__grading_policy__')
+        .maybeSingle()
+
+      if (!data) {
+        return { cooldownMinutes: 3, maxAttempts: 5 }
+      }
+
+      const parsedCooldown = Number(data.exam_duration)
+      const parsedMaxAttempts = Number(data.total_questions)
+
+      return {
+        cooldownMinutes:
+          !Number.isNaN(parsedCooldown) && parsedCooldown >= 0 ? parsedCooldown : 3,
+        maxAttempts:
+          !Number.isNaN(parsedMaxAttempts) && parsedMaxAttempts >= 0 ? parsedMaxAttempts : 5,
+      }
+    } catch {
+      return { cooldownMinutes: 3, maxAttempts: 5 }
+    }
+  }
+
+  /**
+   * AI 채점 요청 전 크레딧을 미리 차감하지 않고,
+   * 유효 패스 보유 여부 · 관리자 설정 문항당 최대 횟수 상한 · 재제출 쿨다운 자격만 사전 검증하는 함수
+   */
+  const checkCreditEligibility = async (
+    examId: string,
+    questionId: string
+  ): Promise<CreditDeductionResult> => {
+    if (!user) {
+      return {
+        success: false,
+        code: 'ERROR',
+        message: '로그인이 필요합니다.',
+      }
+    }
+
+    if (!university) {
+      return {
+        success: false,
+        code: 'ERROR',
+        message: '응시할 대학 정보가 올바르지 않습니다.',
+      }
+    }
+
+    try {
+      // 1) 관리자 설정 채점 운영 정책 및 문항별 시도 기록 동시 조회
+      const [policy, { data: logRow }] = await Promise.all([
+        fetchActiveGradingPolicy(),
+        supabase
+          .from('exam_attempt_logs')
+          .select('attempt_count, last_submitted_at')
+          .eq('user_id', user.id)
+          .eq('exam_id', examId)
+          .eq('question_id', questionId)
+          .maybeSingle(),
+      ])
+
+      if (logRow) {
+        const attemptCount = logRow.attempt_count || 0
+        // maxAttempts가 0이면 무제한 허용, 1 이상이면 상한 검증
+        if (policy.maxAttempts > 0 && attemptCount >= policy.maxAttempts) {
+          return {
+            success: false,
+            code: 'MAX_ATTEMPTS_EXCEEDED',
+            message: `해당 문항의 최대 채점 한도(${policy.maxAttempts}회)를 초과하였습니다. 다른 문항에 도전해 보세요.`,
+            attempt_count: attemptCount,
+          }
+        }
+
+        // cooldownMinutes가 0이면 쿨다운 해제, 1 이상이면 쿨다운 초 단위 검증
+        if (policy.cooldownMinutes > 0 && logRow.last_submitted_at) {
+          const elapsedSec = Math.floor(
+            (Date.now() - new Date(logRow.last_submitted_at).getTime()) / 1000
+          )
+          const cooldownLimitSec = policy.cooldownMinutes * 60
+          if (elapsedSec < cooldownLimitSec) {
+            return {
+              success: false,
+              code: 'COOLDOWN_ACTIVE',
+              message: '이전 첨삭 리포트를 복습할 수 있도록 제출 쿨다운 중입니다.',
+              cooldown_remaining_seconds: cooldownLimitSec - elapsedSec,
+              attempt_count: attemptCount,
+            }
+          }
+        }
+      }
+
+      // 2) 유효 패스 및 잔여 크레딧 실시간 DB 조회
+      const nowIso = new Date().toISOString()
+      const { data: passes } = await supabase
+        .from('user_passes')
+        .select('id, remaining_credits')
+        .eq('user_id', user.id)
+        .eq('university', university)
+        .eq('is_active', true)
+        .gt('expires_at', nowIso)
+        .gt('remaining_credits', 0)
+        .order('expires_at', { ascending: true })
+
+      const totalAvail = (passes || []).reduce((acc, p) => acc + (p.remaining_credits || 0), 0)
+      if (!passes || passes.length === 0 || totalAvail <= 0) {
+        return {
+          success: false,
+          code: 'NO_CREDITS',
+          message: '해당 대학의 유효한 이용권이 없거나 잔여 채점 크레딧이 모두 소진되었습니다.',
+          remaining_credits: 0,
+        }
+      }
+
+      return {
+        success: true,
+        code: 'OK',
+        message: '채점 응시 자격이 확인되었습니다.',
+        remaining_credits: totalAvail,
+      }
+    } catch (err: any) {
+      console.error('[useUserPass] 자격 사전 검증 오류:', err)
+      return {
+        success: false,
+        code: 'ERROR',
+        message: err.message || '채점 자격 확인 중 오류가 발생했습니다.',
+      }
+    }
+  }
+
+  /**
+   * AI 채점 완료 후 DB 크레딧 1회 차감 및 문항별 응시 기록 갱신 함수
+   * - 관리자가 동적으로 설정한 쿨다운/최대횟수 정책과 100% 호환되도록 DB 직접 차감 및 로그 기록 수행
    */
   const consumeCredit = async (examId: string, questionId: string): Promise<CreditDeductionResult> => {
     if (!user) {
@@ -85,30 +223,85 @@ export function useUserPass(university?: string) {
     }
 
     try {
-      const { data, error } = await supabase.rpc('use_grading_credit', {
-        p_user_id: user.id,
-        p_university: university,
-        p_exam_id: examId,
-        p_question_id: questionId
-      })
+      const nowIso = new Date().toISOString()
 
-      if (error) {
-        console.error('[useUserPass] use_grading_credit RPC 에러:', error)
+      // 1) 만료일이 가장 임박한 유효 패스 1건 조회
+      const { data: targetPass, error: passErr } = await supabase
+        .from('user_passes')
+        .select('id, remaining_credits')
+        .eq('user_id', user.id)
+        .eq('university', university)
+        .eq('is_active', true)
+        .gt('expires_at', nowIso)
+        .gt('remaining_credits', 0)
+        .order('expires_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+      if (passErr || !targetPass) {
         return {
           success: false,
-          code: 'ERROR',
-          message: error.message || '크레딧 차감 중 오류가 발생했습니다.'
+          code: 'NO_CREDITS',
+          message: '해당 대학의 유효한 이용권이 없거나 잔여 채점 크레딧이 모두 소진되었습니다.',
+          remaining_credits: 0,
         }
       }
 
-      const result = data as CreditDeductionResult
+      const nextCredits = Math.max(0, (targetPass.remaining_credits || 1) - 1)
 
-      // 성공 시 로컬 상태 동기화 재조회
-      if (result.success) {
-        await fetchPass()
+      // 2) 크레딧 1회 차감 업데이트
+      const { error: updateErr } = await supabase
+        .from('user_passes')
+        .update({
+          remaining_credits: nextCredits,
+          updated_at: nowIso,
+        })
+        .eq('id', targetPass.id)
+
+      if (updateErr) {
+        throw updateErr
       }
 
-      return result
+      // 3) 문항별 응시 횟수 및 최근 제출 시각 기록 갱신
+      const { data: existingLog } = await supabase
+        .from('exam_attempt_logs')
+        .select('id, attempt_count')
+        .eq('user_id', user.id)
+        .eq('exam_id', examId)
+        .eq('question_id', questionId)
+        .maybeSingle()
+
+      let nextAttemptCount = 1
+      if (existingLog?.id) {
+        nextAttemptCount = (existingLog.attempt_count || 0) + 1
+        await supabase
+          .from('exam_attempt_logs')
+          .update({
+            attempt_count: nextAttemptCount,
+            last_submitted_at: nowIso,
+          })
+          .eq('id', existingLog.id)
+      } else {
+        await supabase.from('exam_attempt_logs').insert({
+          user_id: user.id,
+          university,
+          exam_id: examId,
+          question_id: questionId,
+          attempt_count: 1,
+          last_submitted_at: nowIso,
+        })
+      }
+
+      // 4) 로컬 패스 상태 즉시 동기화
+      await fetchPass()
+
+      return {
+        success: true,
+        code: 'OK',
+        message: '채점 크레딧이 1회 사용되었습니다.',
+        remaining_credits: nextCredits,
+        attempt_count: nextAttemptCount,
+      }
     } catch (err: any) {
       console.error('[useUserPass] 크레딧 차감 실패:', err)
       return {
@@ -120,8 +313,8 @@ export function useUserPass(university?: string) {
   }
 
   /**
-   * AI 채점 오류 또는 사용자 취소 시 이미 차감된 크레딧 1회 및 시도 횟수를 원상 복구(환불)하는 함수
-   * (DB에 refund_grading_credit RPC가 있으면 우선 호출하고, 아직 미적용 시 직접 테이블 업데이트 폴백)
+   * 이미 차감된 크레딧 1회 및 시도 횟수를 원상 복구(환불)하는 안전장치 함수
+   * - React 클로저의 이전(Stale) userPass 대신 DB의 실시간 행을 직접 조회하여 복구함으로써 +1 초과 증가 버그 원천 차단
    */
   const refundCredit = async (examId: string, questionId: string): Promise<boolean> => {
     if (!user || !university) return false
@@ -135,23 +328,36 @@ export function useUserPass(university?: string) {
       })
 
       if (rpcErr) {
-        // RPC 미등록 환경을 대비한 직접 복구 폴백
-        if (userPass) {
+        // RPC 미등록 환경을 대비한 DB 실시간 조회 기반 복구 폴백 (Stale Closure 방지)
+        const nowIso = new Date().toISOString()
+        const { data: latestPass } = await supabase
+          .from('user_passes')
+          .select('id, remaining_credits, total_credits')
+          .eq('user_id', user.id)
+          .eq('university', university)
+          .eq('is_active', true)
+          .gt('expires_at', nowIso)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (latestPass && latestPass.remaining_credits < latestPass.total_credits) {
           await supabase
             .from('user_passes')
             .update({
-              remaining_credits: Math.min(userPass.total_credits, (userPass.remaining_credits || 0) + 1),
+              remaining_credits: latestPass.remaining_credits + 1,
               updated_at: new Date().toISOString(),
             })
-            .eq('id', userPass.id)
+            .eq('id', latestPass.id)
         }
+
         const { data: logRow } = await supabase
           .from('exam_attempt_logs')
           .select('id, attempt_count')
           .eq('user_id', user.id)
           .eq('exam_id', examId)
           .eq('question_id', questionId)
-          .single()
+          .maybeSingle()
 
         if (logRow) {
           await supabase
@@ -228,6 +434,7 @@ export function useUserPass(university?: string) {
     hasActivePass: !!userPass && totalRemainingCredits > 0,
     isLoading,
     refetchPass: fetchPass,
+    checkCreditEligibility,
     consumeCredit,
     refundCredit,
     grantPass,

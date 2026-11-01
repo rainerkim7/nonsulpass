@@ -71,8 +71,8 @@ export default function ExamWorkspace({
   // 대학 패스 및 잔여 채점 크레딧 상태 관리
   const {
     remainingCredits,
+    checkCreditEligibility,
     consumeCredit,
-    refundCredit,
     grantPass,
     isPurchaseModalOpen,
     openPurchaseModal,
@@ -1017,35 +1017,31 @@ export default function ExamWorkspace({
       return
     }
 
-    // 3. 관리자(admin)가 아닌 일반 학생의 경우 크레딧 및 어뷰징(쿨다운/5회 상한) 검증
-    let creditDeducted = false
+    // 3. 관리자(admin)가 아닌 일반 학생의 경우 채점 요청 전 자격(잔여 크레딧, 쿨다운, 5회 상한)만 먼저 검증 (차감은 채점 완료 후 수행)
     if (!isAdmin) {
-      // 잔여 크레딧이 0이거나 패스가 없는 경우 결제 모달 오픈
       if (remainingCredits <= 0) {
         openPurchaseModal()
         return
       }
 
-      // DB 원자적 크레딧 차감 RPC 호출
-      const creditResult = await consumeCredit(selectedExamId || 'common', activeQuestion)
-      if (!creditResult.success) {
-        if (creditResult.code === 'COOLDOWN_ACTIVE') {
-          const mins = Math.ceil((creditResult.cooldown_remaining_seconds || 60) / 60)
+      const eligibility = await checkCreditEligibility(selectedExamId || 'common', activeQuestion)
+      if (!eligibility.success) {
+        if (eligibility.code === 'COOLDOWN_ACTIVE') {
+          const mins = Math.ceil((eligibility.cooldown_remaining_seconds || 60) / 60)
           alert(`[제출 쿨다운 안내]\n이전 첨삭 리포트를 충분히 복습하고 개선할 수 있도록 대기 시간(약 ${mins}분 남음)이 적용 중입니다. 피드백을 반영하여 답안을 퇴고해 보세요!`)
           return
         }
-        if (creditResult.code === 'MAX_ATTEMPTS_EXCEEDED') {
+        if (eligibility.code === 'MAX_ATTEMPTS_EXCEEDED') {
           alert(`[문항 한도 초과]\n해당 문항은 이미 최대 5회 채점을 완료하여 마스터하셨습니다.\n다른 기출/모의 문항에 도전해 보세요!`)
           return
         }
-        if (creditResult.code === 'NO_CREDITS') {
+        if (eligibility.code === 'NO_CREDITS') {
           openPurchaseModal()
           return
         }
-        alert(creditResult.message || '채점 크레딧 확인 중 오류가 발생했습니다.')
+        alert(eligibility.message || '채점 크레딧 확인 중 오류가 발생했습니다.')
         return
       }
-      creditDeducted = true
     }
 
     setIsGrading(true)
@@ -1090,6 +1086,11 @@ export default function ExamWorkspace({
       }
 
       const reportData: GradingReportData = await res.json()
+
+      // 4. AI 채점 리포트 생성이 완전히 성공한 직후에만 크레딧 1회 차감 (실패/취소 시 차감 및 증감 오차 원천 차단)
+      if (!isAdmin) {
+        await consumeCredit(selectedExamId || 'common', activeQuestion)
+      }
 
       // 로그인된 수험생/관리자의 경우 DB에 답안 및 채점 리포트 영구 저장
       if (user) {
@@ -1136,17 +1137,12 @@ export default function ExamWorkspace({
 
       onReport(reportData, activeQuestion)
     } catch (err: any) {
-      // 채점 취소 또는 서버 에러 발생 시 이미 차감된 크레딧 1회 즉시 자동 복구(롤백)
-      if (creditDeducted) {
-        await refundCredit(selectedExamId || 'common', activeQuestion)
-      }
-
       if (err.name === 'AbortError') {
-        console.log('채점 요청이 사용자에 의해 안전하게 취소되었으며 크레딧이 복구되었습니다.')
+        console.log('채점 요청이 사용자에 의해 안전하게 취소되었습니다. (크레딧 미차감)')
         return
       }
-      console.warn('AI 채점 일시 지연 발생 (크레딧 자동 복구 완료):', err)
-      setGradingNotice('현재 AI 채점 서버 이용량이 많아 일시 지연되었습니다. 차감된 크레딧은 자동 복구되었으며, 작성하신 답안은 안전하게 보존되어 있으니 잠시 후 다시 제출해 주세요.')
+      console.warn('AI 채점 일시 지연 발생 (크레딧 미차감):', err)
+      setGradingNotice('현재 AI 채점 서버 이용량이 많아 일시 지연되었습니다. 크레딧은 차감되지 않았으며, 작성하신 답안은 안전하게 보존되어 있으니 잠시 후 다시 제출해 주세요.')
       setTimeout(() => {
         setGradingNotice(null)
       }, 6000)

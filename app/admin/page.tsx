@@ -71,6 +71,12 @@ function AdminConsoleContent() {
   const [deletePasswordError, setDeletePasswordError] = useState<string | null>(null)
   const [isDeletingUniv, setIsDeletingUniv] = useState<boolean>(false)
 
+  // AI 채점 운영 정책(재제출 쿨다운 분 · 문항당 최대 응시횟수 상한) 설정 모달 상태
+  const [isPolicyModalOpen, setIsPolicyModalOpen] = useState<boolean>(false)
+  const [cooldownMinutes, setCooldownMinutes] = useState<number>(3)
+  const [maxAttempts, setMaxAttempts] = useState<number>(5)
+  const [isSavingPolicy, setIsSavingPolicy] = useState<boolean>(false)
+
   // 1. 현재 선택된 대학 상태: URL 파라미터(?univ=...) -> localStorage -> 'hongik' 순으로 우선 복원
   const paramUniv = searchParams.get('univ')
   const [selectedUniv, setSelectedUniv] = useState<string>(() => {
@@ -100,9 +106,24 @@ function AdminConsoleContent() {
     }
   }, [])
 
+  // 현재 설정된 AI 채점 운영 정책 로드
+  const fetchGradingPolicy = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/grading-policy')
+      const data = await res.json()
+      if (data.success && data.policy) {
+        setCooldownMinutes(Number(data.policy.cooldownMinutes ?? 3))
+        setMaxAttempts(Number(data.policy.maxAttempts ?? 5))
+      }
+    } catch (err) {
+      console.warn('[AdminPage] 채점 정책 조회 실패:', err)
+    }
+  }, [])
+
   useEffect(() => {
     fetchUniversityList()
-  }, [fetchUniversityList])
+    fetchGradingPolicy()
+  }, [fetchUniversityList, fetchGradingPolicy])
 
   // URL 파라미터가 브라우저 뒤로가기 등으로 변경되었을 때 동기화
   useEffect(() => {
@@ -335,6 +356,42 @@ function AdminConsoleContent() {
     }
   }
 
+  // AI 채점 운영 정책(재제출 쿨다운 시간 · 문항당 최대 응시횟수 상한) 저장 핸들러
+  const handleSaveGradingPolicy = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSavingPolicy(true)
+    try {
+      const res = await fetch('/api/admin/grading-policy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cooldownMinutes: Number(cooldownMinutes) || 0,
+          maxAttempts: Number(maxAttempts) || 0,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || '채점 정책 저장 실패')
+      }
+
+      setCooldownMinutes(data.policy.cooldownMinutes)
+      setMaxAttempts(data.policy.maxAttempts)
+      setIsPolicyModalOpen(false)
+      showNotice(
+        'success',
+        `AI 채점 정책이 저장되었습니다! (재제출 쿨다운: ${
+          data.policy.cooldownMinutes === 0 ? '제한 없음' : `${data.policy.cooldownMinutes}분`
+        } / 문항당 최대 응시횟수: ${
+          data.policy.maxAttempts === 0 ? '무제한' : `${data.policy.maxAttempts}회`
+        })`
+      )
+    } catch (err: any) {
+      showNotice('error', err.message || '채점 정책 저장 중 오류가 발생했습니다.')
+    } finally {
+      setIsSavingPolicy(false)
+    }
+  }
+
   // 대학 변경 시 전체 데이터 로드 및 기본 계열 설정
   useEffect(() => {
     fetchExams(selectedUniv)
@@ -537,6 +594,27 @@ function AdminConsoleContent() {
                   >
                     <Trash2 size={14} />
                     {isDeletingUniv ? '삭제 중...' : '대학 삭제'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPolicyModalOpen(true)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      background: '#f8fafc',
+                      color: '#334155',
+                      fontSize: '12.5px',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                    title="수험생 AI 채점 재제출 쿨다운 시간 및 문항당 최대 응시횟수 상한을 설정합니다"
+                  >
+                    <Sliders size={14} style={{ color: '#2563eb' }} />
+                    채점 정책 설정 ({cooldownMinutes === 0 ? '쿨다운 없음' : `${cooldownMinutes}분`} · {maxAttempts === 0 ? '무제한' : `최대 ${maxAttempts}회`})
                   </button>
                   <span className="admin-badge-green">
                     ● 전체 {univList.length}개 대학 관리 중
@@ -961,6 +1039,256 @@ function AdminConsoleContent() {
                   }}
                 >
                   {isDeletingUniv ? '비밀번호 검증 및 삭제 중...' : '비밀번호 확인 및 삭제'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ⚙️ AI 채점 운영 정책(재제출 쿨다운 시간 · 문항당 최대 응시횟수) 설정 모달 */}
+      {isPolicyModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            background: 'rgba(15, 23, 42, 0.58)',
+            backdropFilter: 'blur(4px)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: '20px',
+          }}
+          onClick={() => !isSavingPolicy && setIsPolicyModalOpen(false)}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '480px',
+              background: '#ffffff',
+              borderRadius: '18px',
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 24px 48px rgba(15, 23, 42, 0.24)',
+              padding: '24px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '10px',
+                    background: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    display: 'grid',
+                    placeItems: 'center',
+                    color: '#2563eb',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Sliders size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
+                    AI 채점 운영 정책 설정
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>
+                    수험생 답안 제출 시 적용되는 쿨다운 대기 시간과 문항별 최대 응시 상한을 설정합니다.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isSavingPolicy}
+                onClick={() => setIsPolicyModalOpen(false)}
+                style={{
+                  border: 0,
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                  padding: '4px',
+                }}
+                aria-label="모달 닫기"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveGradingPolicy} style={{ display: 'grid', gap: '18px' }}>
+              {/* 1. 재제출 쿨다운 시간 설정 */}
+              <div
+                style={{
+                  padding: '14px 16px',
+                  borderRadius: '12px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                }}
+              >
+                <label
+                  htmlFor="policy-cooldown-minutes"
+                  style={{ display: 'block', fontSize: '13px', fontWeight: 800, color: '#1e293b', marginBottom: '4px' }}
+                >
+                  1. 재제출 쿨다운 대기 시간 (분 단위)
+                </label>
+                <p style={{ margin: '0 0 10px', fontSize: '11.5px', color: '#64748b', lineHeight: 1.5 }}>
+                  동일 문항을 연속 제출할 때 최소 대기 시간입니다. <strong>0</strong>으로 설정하면 대기 시간 없이 즉시 연속 채점이 가능합니다.
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <input
+                    id="policy-cooldown-minutes"
+                    type="number"
+                    min={0}
+                    max={1440}
+                    value={cooldownMinutes}
+                    onChange={(e) => setCooldownMinutes(Math.max(0, Number(e.target.value)))}
+                    style={{
+                      width: '110px',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '14px',
+                      fontWeight: 700,
+                      color: '#0f172a',
+                    }}
+                  />
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#475569' }}>
+                    분 {cooldownMinutes === 0 ? '(쿨다운 제한 해제됨)' : `(${cooldownMinutes * 60}초 대기)`}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {[
+                    { label: '0분 (해제)', val: 0 },
+                    { label: '1분', val: 1 },
+                    { label: '3분 (기본)', val: 3 },
+                    { label: '5분', val: 5 },
+                    { label: '10분', val: 10 },
+                  ].map((preset) => (
+                    <button
+                      key={preset.val}
+                      type="button"
+                      onClick={() => setCooldownMinutes(preset.val)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        border: cooldownMinutes === preset.val ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                        background: cooldownMinutes === preset.val ? '#dbeafe' : '#ffffff',
+                        color: cooldownMinutes === preset.val ? '#1d4ed8' : '#475569',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. 문항당 최대 응시횟수 상한 설정 */}
+              <div
+                style={{
+                  padding: '14px 16px',
+                  borderRadius: '12px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                }}
+              >
+                <label
+                  htmlFor="policy-max-attempts"
+                  style={{ display: 'block', fontSize: '13px', fontWeight: 800, color: '#1e293b', marginBottom: '4px' }}
+                >
+                  2. 문항당 최대 응시횟수 상한 (회 단위)
+                </label>
+                <p style={{ margin: '0 0 10px', fontSize: '11.5px', color: '#64748b', lineHeight: 1.5 }}>
+                  수험생 1명이 동일한 문항을 최대 몇 회까지 채점받을 수 있는지 제한합니다. <strong>0</strong>으로 설정하면 횟수 제한이 해제됩니다.
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <input
+                    id="policy-max-attempts"
+                    type="number"
+                    min={0}
+                    max={999}
+                    value={maxAttempts}
+                    onChange={(e) => setMaxAttempts(Math.max(0, Number(e.target.value)))}
+                    style={{
+                      width: '110px',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '14px',
+                      fontWeight: 700,
+                      color: '#0f172a',
+                    }}
+                  />
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#475569' }}>
+                    회 {maxAttempts === 0 ? '(횟수 무제한 허용)' : `(문항당 최대 ${maxAttempts}회)`}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {[
+                    { label: '3회', val: 3 },
+                    { label: '5회 (기본)', val: 5 },
+                    { label: '10회', val: 10 },
+                    { label: '20회', val: 20 },
+                    { label: '0회 (무제한)', val: 0 },
+                  ].map((preset) => (
+                    <button
+                      key={preset.val}
+                      type="button"
+                      onClick={() => setMaxAttempts(preset.val)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        border: maxAttempts === preset.val ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                        background: maxAttempts === preset.val ? '#dbeafe' : '#ffffff',
+                        color: maxAttempts === preset.val ? '#1d4ed8' : '#475569',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '2px' }}>
+                <button
+                  type="button"
+                  disabled={isSavingPolicy}
+                  onClick={() => setIsPolicyModalOpen(false)}
+                  style={{
+                    padding: '9px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#475569',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingPolicy}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    border: 0,
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: isSavingPolicy ? 'not-allowed' : 'pointer',
+                    opacity: isSavingPolicy ? 0.65 : 1,
+                  }}
+                >
+                  {isSavingPolicy ? '저장 중...' : '정책 저장 및 즉시 적용'}
                 </button>
               </div>
             </form>

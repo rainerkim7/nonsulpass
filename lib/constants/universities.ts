@@ -116,9 +116,9 @@ export function mergeUniversitiesWithDb(
     result.push(merged)
   })
 
-  // 2. 관리자가 새로 추가한 DB 전용 대학들을 목록 뒤에 자동 추가
+  // 2. 관리자가 새로 추가한 DB 전용 대학들을 목록 뒤에 자동 추가 (시스템 설정 예약 행 '__*' 제외)
   dbUnivs.forEach((dbRow) => {
-    if (!dbRow.id || seenIds.has(dbRow.id)) return
+    if (!dbRow.id || dbRow.id.startsWith('__') || seenIds.has(dbRow.id)) return
     const tracks = dbRow.faculty
       ? dbRow.faculty.split(/[,/·]/).map((s) => s.trim()).filter(Boolean)
       : ['인문계열 (공통)']
