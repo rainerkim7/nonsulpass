@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { SEOUL_UNIVERSITIES, type UniversityMeta } from '@/lib/constants/universities'
 import { useAuth } from '@/lib/auth-context'
+import { supabase } from '@/lib/supabase'
 
 interface MultiPassPurchaseModalProps {
   isOpen: boolean
@@ -38,7 +39,7 @@ interface MultiPassPurchaseModalProps {
 }
 
 // 가격 및 크레딧 상수 (대학 페이지 PassPurchaseModal과 동일)
-const PRICE_PER_NEW_UNIV = 19800 // 신규 대학 30일 마스터 패스 (30회)
+const PRICE_PER_NEW_UNIV = 19800 // 신규 대학 마스터 패스
 const ADDON_CREDIT_STEP = 5 // 크레딧 추가 단위: 5회
 const ADDON_PRICE_PER_STEP = 4900 // 5회당 4,900원 (대학 페이지 addon_5와 동일)
 
@@ -57,12 +58,16 @@ export default function MultiPassPurchaseModal({
   // 이미 보유한 대학의 추가 크레딧 맵: { '홍익대학교': 10, '경희대학교': 5 }
   const [addonCredits, setAddonCredits] = useState<Record<string, number>>({})
 
+  // 관리자 설정 정책 상태 (기본 365일, 60회)
+  const [policyPeriodDays, setPolicyPeriodDays] = useState<number>(365)
+  const [policyBaseCredits, setPolicyBaseCredits] = useState<number>(60)
+
   const [payMethod, setPayMethod] = useState<'kakaopay' | 'tosspay' | 'naverpay' | 'card'>('kakaopay')
   const [isProcessing, setIsProcessing] = useState(false)
   const [successNotice, setSuccessNotice] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  // 1. 모달이 열릴 때마다 이전 선택 상태(체크 표시 및 크레딧 추가 내역) 깨끗이 초기화
+  // 1. 모달이 열릴 때마다 이전 선택 상태 초기화 및 관리자 정책 로드
   useEffect(() => {
     if (isOpen) {
       setSelectedUnivs([])
@@ -70,6 +75,25 @@ export default function MultiPassPurchaseModal({
       setIsProcessing(false)
       setErrorMsg(null)
       setSuccessNotice(null)
+
+      const loadPolicy = async () => {
+        try {
+          const { data } = await supabase
+            .from('universities')
+            .select('char_per_question')
+            .eq('id', '__grading_policy__')
+            .maybeSingle()
+
+          if (data?.char_per_question) {
+            const parsed = JSON.parse(data.char_per_question)
+            if (typeof parsed.periodDays === 'number') setPolicyPeriodDays(parsed.periodDays)
+            if (typeof parsed.baseCredits === 'number') setPolicyBaseCredits(parsed.baseCredits)
+          }
+        } catch {
+          // fallback 기본값 유지
+        }
+      }
+      loadPolicy()
     }
   }, [isOpen])
 
@@ -190,7 +214,7 @@ export default function MultiPassPurchaseModal({
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  신규 대학 30일 마스터 패스를 선택하거나, 이미 보유한 대학의 채점 크레딧을 +5회 단위로 간편히 충전하세요.
+                  신규 대학 {policyPeriodDays === 0 ? '무제한' : `${policyPeriodDays}일`} 마스터 패스({policyBaseCredits}회)를 선택하거나, 이미 보유한 대학의 채점 크레딧을 +5회 단위로 간편히 충전하세요.
                 </p>
               </div>
             </div>
@@ -312,7 +336,7 @@ export default function MultiPassPurchaseModal({
                   )
                 }
 
-                // 2) 미보유 대학인 경우: 체크박스로 신규 30일 마스터 패스 선택
+                // 2) 미보유 대학인 경우: 체크박스로 신규 마스터 패스 선택
                 return (
                   <div
                     key={univ.id}
@@ -336,9 +360,10 @@ export default function MultiPassPurchaseModal({
                       <span className="text-xs font-semibold truncate">{univ.name}</span>
                     </div>
 
-                    <span className="text-[10px] text-slate-400 font-medium">
-                      19,800원
-                    </span>
+                    <div className="text-right">
+                      <div className="text-[10px] text-slate-400 font-medium">19,800원</div>
+                      <div className="text-[9px] text-blue-400 font-bold">{policyBaseCredits}회</div>
+                    </div>
                   </div>
                 )
               })}

@@ -12,6 +12,8 @@ export interface GeminiCallOptions {
   parts: Array<Record<string, any>>
   /** 생성 온도 (기본값: 0.2) */
   temperature?: number
+  /** 최대 출력 토큰 수 (유료 등급 대용량 추출 시 65536 등 지정 가능) */
+  maxOutputTokens?: number
   /** 응답 MIME 타입 (JSON 응답 시 'application/json') */
   responseMimeType?: string
   /** 우선 시도할 커스텀 모델 목록 (미지정 시 표준 모델 라인업 사용) */
@@ -30,13 +32,23 @@ export interface GeminiCallResult {
 }
 
 /**
- * 논술패스 Lab 표준 Gemini 모델 폴백 라인업
- * - 존재하지 않는 모델명으로 인한 404 지연 없이 가장 빠르고 정확한 최신 모델부터 순차 시도
+ * 논술패스 Lab 유료 등급(Pay-as-you-go) 고성능 Pro 우선 모델 폴백 라인업
+ * - 정밀 논술 채점 및 입학처 대용량 통합 문서 올인원 추출에 사용
  */
-export const DEFAULT_GEMINI_MODELS = [
-  'gemini-2.5-flash',
+export const PAID_PRO_GEMINI_MODELS = [
+  'gemini-3.1-pro-preview',
+  'gemini-pro-latest',
   'gemini-3-flash-preview',
   'gemini-flash-latest',
+]
+
+/**
+ * 논술패스 Lab 고속 비전/범용 모델 폴백 라인업 (손글씨 OCR 등 빠른 응답용)
+ */
+export const DEFAULT_GEMINI_MODELS = [
+  'gemini-3-flash-preview',
+  'gemini-flash-latest',
+  'gemini-3.1-pro-preview',
   'gemini-pro-latest',
 ]
 
@@ -60,6 +72,9 @@ export async function callGeminiWithFallback(
 
   const generationConfig: Record<string, any> = {
     temperature: options.temperature ?? 0.2,
+  }
+  if (options.maxOutputTokens) {
+    generationConfig.maxOutputTokens = options.maxOutputTokens
   }
   if (options.responseMimeType) {
     generationConfig.responseMimeType = options.responseMimeType

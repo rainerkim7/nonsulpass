@@ -16,7 +16,8 @@ import {
   CheckCircle2,
   Trash2,
   CheckSquare,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Cpu
 } from 'lucide-react'
 import { UNIVERSITY_FACULTIES } from '@/lib/constants/universities'
 import {
@@ -42,6 +43,14 @@ interface AllInOneParserProps {
   showNotice: (type: 'success' | 'error', message: string) => void
 }
 
+// 유료 전환 후 사용 가능한 Gemini 파서 AI 모델 옵션 목록
+const AVAILABLE_GEMINI_PARSER_MODELS = [
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro (정밀/수리논술 추천)' },
+  { id: 'gemini-pro-latest', name: 'Gemini Pro Latest (대용량 안정화)' },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash (고속 멀티모달)' },
+  { id: 'gemini-flash-latest', name: 'Gemini Flash Latest (초고속)' },
+]
+
 export default function AllInOneParser({
   selectedUniv,
   univName,
@@ -62,6 +71,15 @@ export default function AllInOneParser({
     tab2: boolean
     tab3: boolean
   }>({ tab1: true, tab2: false, tab3: false })
+
+  // 관리자 선택 Gemini 모델 상태 (localStorage 연동 기억)
+  const [selectedGeminiModel, setSelectedGeminiModel] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('nonsulpass_allinone_gemini_model')
+      if (saved) return saved
+    }
+    return 'gemini-3.1-pro-preview'
+  })
 
   const [attachedFiles, setAttachedFiles] = useState<Array<{
     id: string
@@ -362,13 +380,15 @@ export default function AllInOneParser({
           univName,
           targetFaculty: activeFaculty,
           documentText: allInOneDocText,
-          selectedTabs: selectedTabsToGenerate
+          selectedTabs: selectedTabsToGenerate,
+          model: selectedGeminiModel,
         })
       })
 
       const data = await res.json()
       if (data.success) {
         const parsedData = data.data
+        const usedModelText = data.modelUsed ? ` (사용 모델: ${data.modelUsed})` : ''
         // 상단에서 미리 첨부한 문제지 PDF가 있다면 탭 1 기출 데이터에 자동 주입
         if (parsedData?.tab1_exam && manualPdfUrl) {
           parsedData.tab1_exam.pdf_url = manualPdfUrl
@@ -382,7 +402,7 @@ export default function AllInOneParser({
         } else if (parsedData?.tab3_scoring) {
           setAllInOnePreviewTab('tab3')
         }
-        showNotice('success', `[${activeFaculty}] 선택된 탭 데이터가 성공적으로 분해·생성되었습니다!`)
+        showNotice('success', `[${activeFaculty}] 선택된 탭 데이터가 성공적으로 분해·생성되었습니다!${usedModelText}`)
       } else {
         showNotice('error', `올인원 분해 실패: ${data.error}`)
       }
@@ -441,22 +461,64 @@ export default function AllInOneParser({
       <div className="admin-card" style={{ background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '18px' }}>
           <div style={{ maxWidth: '820px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
               <Sparkles size={20} color="#2563eb" />
               <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
                 {univName} 입학처 통합 보고서 올인원 추출기 (원클릭 3대 탭 완성)
               </h3>
-              <span style={{
-                background: '#eff6ff',
-                color: '#1e40af',
-                fontSize: '11px',
-                fontWeight: 800,
-                padding: '2px 8px',
-                borderRadius: '6px',
-                border: '1px solid #bfdbfe'
-              }}>
-                Gemini 2.5 멀티모달 파서
-              </span>
+              {/* 유료 전환 후 사용 가능한 Gemini 파서 AI 모델 선택 셀렉터 */}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                <label
+                  htmlFor="gemini-parser-model-select"
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    color: '#1e40af',
+                    background: '#eff6ff',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid #bfdbfe',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    cursor: 'pointer'
+                  }}
+                  title="유료 결제 계정에서 사용 가능한 Gemini 모델을 선택할 수 있습니다"
+                >
+                  <Cpu size={12} color="#2563eb" />
+                  AI 모델
+                </label>
+                <select
+                  id="gemini-parser-model-select"
+                  value={selectedGeminiModel}
+                  onChange={(e) => {
+                    const newModel = e.target.value
+                    setSelectedGeminiModel(newModel)
+                    if (typeof window !== 'undefined') {
+                      localStorage.setItem('nonsulpass_allinone_gemini_model', newModel)
+                    }
+                  }}
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #bfdbfe',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    color: '#1e3a8a',
+                    cursor: 'pointer',
+                    outline: 'none',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                  }}
+                  title="올인원 문서 추출 시 사용할 Gemini AI 모델을 선택합니다"
+                >
+                  {AVAILABLE_GEMINI_PARSER_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.65', color: '#475569' }}>
               대학 입학처에서 발간한 <strong>[선행학습 영향평가 결과보고서 PDF/TXT]</strong> 한 권을 통째로 업로드하세요.

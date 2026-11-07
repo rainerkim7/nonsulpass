@@ -5,17 +5,18 @@
  * @description 대학별 30일 마스터 패스 (19,800원) 및 추가 채점권 결제 모달
  */
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { X, Check, Sparkles, CreditCard, ShieldCheck, Zap, AlertCircle, Loader2 } from 'lucide-react'
 import { PASS_PRODUCTS, PassProductItem, PassType } from '@/types/payment'
 import { useAuth } from '@/lib/auth-context'
+import { supabase } from '@/lib/supabase'
 
 interface PassPurchaseModalProps {
   isOpen: boolean
   onClose: () => void
   university: string
   onPaymentSuccess?: (credits: number) => void
-  onGrantPass: (passType: PassType, credits: number, periodDays?: number) => Promise<boolean>
+  onGrantPass: (passType: PassType, credits?: number, periodDays?: number) => Promise<boolean>
 }
 
 export default function PassPurchaseModal({
@@ -26,11 +27,68 @@ export default function PassPurchaseModal({
   onGrantPass,
 }: PassPurchaseModalProps) {
   const { user } = useAuth()
+  const [products, setProducts] = useState<PassProductItem[]>(PASS_PRODUCTS)
   const [selectedProduct, setSelectedProduct] = useState<PassProductItem>(PASS_PRODUCTS[0])
   const [payMethod, setPayMethod] = useState<'card' | 'kakaopay' | 'naverpay' | 'tosspay'>('kakaopay')
   const [isProcessing, setIsProcessing] = useState(false)
   const [successNotice, setSuccessNotice] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  // 관리자 설정 정책(기본 365일, 60회 등) 로드하여 마스터 패스 상품 정보 동적 반영
+  useEffect(() => {
+    if (!isOpen) return
+    const loadPolicy = async () => {
+      try {
+        const { data } = await supabase
+          .from('universities')
+          .select('char_per_question')
+          .eq('id', '__grading_policy__')
+          .maybeSingle()
+
+        let periodDays = 365
+        let baseCredits = 60
+
+        if (data?.char_per_question) {
+          try {
+            const parsed = JSON.parse(data.char_per_question)
+            if (typeof parsed.periodDays === 'number') periodDays = parsed.periodDays
+            if (typeof parsed.baseCredits === 'number') baseCredits = parsed.baseCredits
+          } catch {
+            // 기본값 유지
+          }
+        }
+
+        const updatedProducts: PassProductItem[] = PASS_PRODUCTS.map((prod) => {
+          if (prod.id === 'standard_30') {
+            const periodText = periodDays === 0 ? '무제한' : `${periodDays}일`
+            return {
+              ...prod,
+              name: `${periodText} 대학 마스터 패스`,
+              credits: baseCredits,
+              periodDays,
+              description: `결제 즉시 해당 대학 ${periodText}간 ${baseCredits}회 AI 정밀 첨삭 이용권 지급`,
+              features: [
+                `해당 대학 전체 기출/모의/예상 15세트`,
+                `1:1 정밀 다차원 첨삭 리포트 ${baseCredits}회`,
+                periodDays === 0 ? '이용 기간 무제한' : `결제일로부터 ${periodDays}일간 유효`,
+                `문항별 모범답안 및 세부 채점표 무제한 열람`,
+              ],
+            }
+          }
+          return {
+            ...prod,
+            periodDays,
+          }
+        })
+
+        setProducts(updatedProducts)
+        setSelectedProduct(updatedProducts[0])
+      } catch (err) {
+        console.warn('관리자 패스 정책 로드 실패:', err)
+      }
+    }
+    loadPolicy()
+  }, [isOpen])
 
   if (!isOpen) return null
 
@@ -130,7 +188,7 @@ export default function PassPurchaseModal({
               이용권 선택
             </label>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {PASS_PRODUCTS.map((prod) => {
+              {products.map((prod) => {
                 const isSelected = selectedProduct.id === prod.id
                 return (
                   <div
@@ -224,7 +282,10 @@ export default function PassPurchaseModal({
         <div className="p-5 border-t border-slate-800 bg-slate-900/90 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-xs text-slate-400">
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>부가세(VAT) 포함가 · 결제 후 30일간 유효 · 즉시 반영</span>
+            <span>
+              부가세(VAT) 포함가 · 결제 후{' '}
+              {selectedProduct.periodDays === 0 ? '기간 무제한' : `${selectedProduct.periodDays}일간 유효`} · 즉시 반영
+            </span>
           </div>
 
           <div className="flex items-center gap-3 w-full sm:w-auto">

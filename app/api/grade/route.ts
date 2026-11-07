@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { GradingReportData } from '@/types/grading'
-import { callGeminiWithFallback } from '@/lib/gemini-client'
+import { callGeminiWithFallback, PAID_PRO_GEMINI_MODELS } from '@/lib/gemini-client'
+import { supabase } from '@/lib/supabase'
 
 export async function POST(req: Request) {
   try {
@@ -26,6 +27,7 @@ export async function POST(req: Request) {
       studentName = '수험생',
       customSystemPrompt = '',
       customUserPrompt = '',
+      model = '',
     } = body
 
     if (!studentAnswer || studentAnswer.trim().length < 30) {
@@ -136,13 +138,39 @@ ${modelAnswer || '제시문과 발문의 논리적 일치 여부로 판단'}
       ? customUserPrompt.trim()
       : userPrompt
 
-    // 공통 Gemini 클라이언트 호출 (존재하지 않는 모델 404 지연 제거 및 503/429 자동 재시도)
-    const { text: rawResponseText } = await callGeminiWithFallback({
+    // 관리자 설정 정책(DB: __grading_policy__)에서 기본 채점 모델 조회
+    let configuredModel = 'gemini-3.1-pro-preview'
+    if (typeof model === 'string' && model.trim()) {
+      configuredModel = model.trim()
+    } else {
+      try {
+        const { data: policyRow } = await supabase
+          .from('universities')
+          .select('char_per_question')
+          .eq('id', '__grading_policy__')
+          .maybeSingle()
+        if (policyRow?.char_per_question) {
+          const parsed = JSON.parse(policyRow.char_per_question)
+          if (typeof parsed.gradingModel === 'string' && parsed.gradingModel.trim()) {
+            configuredModel = parsed.gradingModel.trim()
+          }
+        }
+      } catch (policyErr) {
+        console.warn('[GradeAPI] 관리자 채점 모델 정책 조회 생략(기본값 사용):', policyErr)
+      }
+    }
+
+    // 관리자 지정 모델을 최우선으로 배치하고 장애 시 나머지 유료 라인업으로 폴백
+    const gradingModels = Array.from(new Set([configuredModel, ...PAID_PRO_GEMINI_MODELS]))
+
+    // 유료 등급 Gemini 모델 호출 (심층 논리 평가 및 1:1 재작성 정밀도 극대화)
+    const { text: rawResponseText, modelUsed } = await callGeminiWithFallback({
       apiKey,
       parts: [{ text: `${finalSystemPrompt}\n\n${finalUserPrompt}` }],
       temperature: 0.2,
+      maxOutputTokens: 16384,
       responseMimeType: 'application/json',
-      models: ['gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-flash-latest'],
+      models: gradingModels,
     })
 
     // 마크다운 백틱 등이 포함되어 있을 경우 정제
@@ -154,6 +182,10 @@ ${modelAnswer || '제시문과 발문의 논리적 일치 여부로 판단'}
     }
 
     const reportData: GradingReportData = JSON.parse(cleanJson)
+    // 리포트에 실제 응답한 AI 모델 정보 주입
+    if (!reportData.modelUsed && modelUsed) {
+      reportData.modelUsed = modelUsed
+    }
     return NextResponse.json(reportData)
   } catch (error: any) {
     console.error('논술 AI 채점 에러:', error)

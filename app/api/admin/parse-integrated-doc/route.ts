@@ -5,7 +5,7 @@
  */
 
 import { NextResponse } from 'next/server'
-import { callGeminiWithFallback } from '@/lib/gemini-client'
+import { callGeminiWithFallback, PAID_PRO_GEMINI_MODELS } from '@/lib/gemini-client'
 
 export async function POST(req: Request) {
   try {
@@ -23,7 +23,8 @@ export async function POST(req: Request) {
       univName = '경희대학교',
       targetFaculty = '',
       documentText = '',
-      selectedTabs = { tab1: true, tab2: true, tab3: true }
+      selectedTabs = { tab1: true, tab2: true, tab3: true },
+      model = 'gemini-3.1-pro-preview',
     } = body
 
     if (!documentText || documentText.trim().length < 50) {
@@ -65,16 +66,18 @@ export async function POST(req: Request) {
        - content: 제시문의 본문 텍스트 전문 (누락 없이 원문 복원)
         ※ [제시문 원문 보존 절대 원칙]: 실제 대학 출제 시험지 원문에 없는 임의의 소제목, 요약 타이틀을 제시문에 절대 추가하거나 창작하지 마십시오. 오직 시험지 원문에 표기된 순수 기호 식별자(예: "[제시문 가]" 또는 "[가]")와 본문 내용만 그대로 추출하십시오.
         ※ [수학 수식 및 도표 보존 원칙]: 함수식, 부등호(≤, ≥), 정적분(∫), 소문항 세부 조건식(①, ②, ③ 등) 등 수리논술 수식과 조건은 유니코드 기호와 줄바꿈을 사용하여 깨짐 없이 가독성 높은 블록 형태로 정돈하십시오. 만약 좌표평면 그래프나 시각 도표가 언급된 경우, 해당 위치에 [도표/그래프: 설명] 식별 태그를 보존하십시오.
-     - modelAnswer: 문서에 수록된 공식 예시답안 전문
-     - scoringCriteria: 해당 문항의 공식 채점 기준표 배열 (문서 내 [채점 기준/평가 기준/루브릭] 내용 기반)
+     - modelAnswer: 문서에 수록된 공식 예시답안 전문 (단 한 문장도 요약하거나 생략하지 말고 100% 원문 그대로 복원)
+     - keyArguments: 문항 해설 및 채점 기준에서 강조하는 필수 핵심 평가 논점 3~5개 문자열 배열
+     - scoringCriteria: 해당 문항의 공식 등급별 채점 기준표 배열 (문서 내 [채점 기준/평가 기준/루브릭] 내용 기반)
        - grade: 등급 또는 평가 단계 (예: "A", "B", "C", "D" 또는 "우수", "보통", "미흡")
        - range: 획득 점수 구간 (예: "90~100점", "20~25점")
        - description: 해당 등급/점수 부여를 위한 세부 채점 요건 및 필수 논점 서술
-     - rubric: (선택 사항) 해당 문항의 정밀 루브릭 객체
-       - facultyWeight: 계열 및 배점 요약 (예: "사회계열 논제 Ⅰ (25점 배점)")
+     - rubric: (필수 생성) 해당 문항의 공식 채점 기준표 및 배점표 객체 (문항 해설·출제 의도·채점 기준을 종합하여 반드시 구체적으로 구조화할 것)
+       - facultyWeight: 계열 및 배점 요약 (예: "사회계열 논제 Ⅰ (50점 만점 / 정밀채점 100점 환산)")
        - totalScore: 만점 및 기본점수 (예: "100점 만점 (기본 60점)")
-       - items: 평가 영역별 세부 항목 배열 [{ category: "평가영역", subItems: [{ name: "항목명", desc: "세부내용", points: "배점" }] }]
-       - deductions: 글자 수 및 원고지 작성 관련 감점 기준 문자열 배열`)
+       - items: 평가 영역별 세부 채점 기준 및 배점 배열 (총 배점 합이 100점이 되도록 3~5개 평가 영역으로 구성)
+         [{ "category": "평가 영역명 (예: 1. 핵심 논점 비교·분류 (40점))", "subItems": [{ "name": "평가 대상 (예: 제시문 [가]·[나] 핵심 입장)", "desc": "도출해야 할 구체적 논거 및 필수 키워드", "points": "20점" }] }]
+       - deductions: 글자 수 미달/초과, 원고지 작성법 위반, 제시문 단순 표절 등 감점 유의사항 문자열 배열 (3~4개)`)
     }
 
     if (shouldParseTab2) {
@@ -139,13 +142,18 @@ ${documentText.trim()}
       shouldParseTab3 ? '탭 3(채점기준)' : null
     ].filter(Boolean).join(', ')}] 항목만 집중 정밀 분석하여 JSON 규격으로 반환하십시오.`
 
-    // 공통 Gemini 클라이언트 호출 (최신 모델 및 503/429 재시도 폴백 지원)
-    const { text: rawJsonText } = await callGeminiWithFallback({
+    // 사용자가 관리자 화면에서 선택한 모델을 최우선으로 시도하고, 장애 시 나머지 유료 라인업으로 폴백
+    const requestedModel = typeof model === 'string' && model.trim() ? model.trim() : 'gemini-3.1-pro-preview'
+    const prioritizedModels = Array.from(new Set([requestedModel, ...PAID_PRO_GEMINI_MODELS]))
+
+    // 유료 등급 Gemini Pro 우선 호출 (65,536 최대 출력 토큰 해제로 대용량 지문·채점표 무손실 추출)
+    const { text: rawJsonText, modelUsed } = await callGeminiWithFallback({
       apiKey,
       parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }],
-      temperature: 0.2,
+      temperature: 0.15,
+      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
-      models: ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3-flash-preview', 'gemini-pro-latest'],
+      models: prioritizedModels,
       retryDelayMs: 1000,
     })
 
@@ -153,7 +161,8 @@ ${documentText.trim()}
 
     return NextResponse.json({
       success: true,
-      data: resultJson
+      data: resultJson,
+      modelUsed,
     })
   } catch (error: any) {
     console.error('[Parse Integrated Doc API Error]:', error)

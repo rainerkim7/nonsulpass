@@ -41,4 +41,5 @@ export interface GradingReportData {
     flawReason: string    // 감점 사유
     afterText: string     // AI 합격자 수준 재작성 문장
   }
+  modelUsed?: string      // 실제 채점을 수행한 AI 모델명 (예: gemini-3.1-pro-preview)
 }

@@ -65,34 +65,54 @@ export function useUserPass(university?: string) {
   }, [fetchPass])
 
   /**
-   * 관리자가 설정한 AI 채점 운영 정책(재제출 쿨다운 분 · 문항당 최대 응시횟수)을 실시간 DB에서 조회하는 헬퍼
+   * 관리자가 설정한 AI 채점 및 패스 운영 정책(쿨다운 분 · 문항당 한도 · 패스 유효기간 · 기본 크레딧)을 실시간 DB에서 조회하는 헬퍼
    */
   const fetchActiveGradingPolicy = async (): Promise<{
     cooldownMinutes: number
     maxAttempts: number
+    periodDays: number
+    baseCredits: number
   }> => {
     try {
       const { data } = await supabase
         .from('universities')
-        .select('exam_duration, total_questions')
+        .select('exam_duration, total_questions, char_per_question')
         .eq('id', '__grading_policy__')
         .maybeSingle()
 
       if (!data) {
-        return { cooldownMinutes: 3, maxAttempts: 5 }
+        return { cooldownMinutes: 3, maxAttempts: 5, periodDays: 365, baseCredits: 60 }
       }
 
       const parsedCooldown = Number(data.exam_duration)
       const parsedMaxAttempts = Number(data.total_questions)
+
+      let periodDays = 365
+      let baseCredits = 60
+      if (data.char_per_question) {
+        try {
+          const extraConfig = JSON.parse(data.char_per_question)
+          if (typeof extraConfig.periodDays === 'number' && extraConfig.periodDays >= 0) {
+            periodDays = extraConfig.periodDays
+          }
+          if (typeof extraConfig.baseCredits === 'number' && extraConfig.baseCredits > 0) {
+            baseCredits = extraConfig.baseCredits
+          }
+        } catch {
+          // fallback 기본값
+        }
+      }
 
       return {
         cooldownMinutes:
           !Number.isNaN(parsedCooldown) && parsedCooldown >= 0 ? parsedCooldown : 3,
         maxAttempts:
           !Number.isNaN(parsedMaxAttempts) && parsedMaxAttempts >= 0 ? parsedMaxAttempts : 5,
+        periodDays,
+        baseCredits,
       }
     } catch {
-      return { cooldownMinutes: 3, maxAttempts: 5 }
+      return { cooldownMinutes: 3, maxAttempts: 5, periodDays: 365, baseCredits: 60 }
     }
   }
 
@@ -381,18 +401,34 @@ export function useUserPass(university?: string) {
   /**
    * 결제 완료 또는 모의 결제 성공 시 패스 DB 즉시 충전 및 payment_orders 주문 내역 기록 헬퍼
    */
-  const grantPass = async (passType: PassType, credits: number, periodDays: number = 30) => {
+  const grantPass = async (passType: PassType, credits?: number, periodDays?: number) => {
     if (!user || !university) return false
 
     try {
       const now = new Date()
-      const expiresAt = new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000).toISOString()
+      // 관리자 실시간 정책 조회 (인자가 직접 넘어오지 않았거나 standard_30인 경우 관리자 정책 우선)
+      const policy = await fetchActiveGradingPolicy()
+      const effectiveCredits =
+        credits !== undefined && credits > 0
+          ? credits
+          : passType === 'standard_30'
+          ? policy.baseCredits
+          : 30
+
+      const effectivePeriodDays =
+        periodDays !== undefined && periodDays >= 0
+          ? periodDays
+          : policy.periodDays
+
+      // periodDays가 0이면 10년 뒤(사실상 무제한)로 설정
+      const daysToAdd = effectivePeriodDays === 0 ? 3650 : effectivePeriodDays
+      const expiresAt = new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000).toISOString()
 
       const { error } = await supabase.from('user_passes').insert({
         user_id: user.id,
         university,
-        total_credits: credits,
-        remaining_credits: credits,
+        total_credits: effectiveCredits,
+        remaining_credits: effectiveCredits,
         pass_type: passType,
         starts_at: now.toISOString(),
         expires_at: expiresAt,
@@ -489,25 +525,55 @@ export function useAllUserPasses() {
   }, [fetchAllPasses])
 
   /**
-   * 여러 대학에 대해 30일 마스터 패스를 한 번에 일괄 구매 및 DB 부여하는 함수
+   * 여러 대학에 대해 대학 마스터 패스를 한 번에 일괄 구매 및 DB 부여하는 함수
    */
   const grantMultiplePasses = async (
     universities: string[],
     passType: PassType = 'standard_30',
-    credits: number = 30,
-    periodDays: number = 30
+    credits?: number,
+    periodDays?: number
   ): Promise<boolean> => {
     if (!user || universities.length === 0) return false
 
     try {
       const now = new Date()
-      const expiresAt = new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000).toISOString()
+      // 관리자 실시간 정책 동기화
+      let policy = { periodDays: 365, baseCredits: 60 }
+      try {
+        const { data } = await supabase
+          .from('universities')
+          .select('char_per_question')
+          .eq('id', '__grading_policy__')
+          .maybeSingle()
+        if (data?.char_per_question) {
+          const parsed = JSON.parse(data.char_per_question)
+          if (typeof parsed.periodDays === 'number') policy.periodDays = parsed.periodDays
+          if (typeof parsed.baseCredits === 'number') policy.baseCredits = parsed.baseCredits
+        }
+      } catch {
+        // 기본값 사용
+      }
+
+      const effectiveCredits =
+        credits !== undefined && credits > 0
+          ? credits
+          : passType === 'standard_30'
+          ? policy.baseCredits
+          : 60
+
+      const effectivePeriodDays =
+        periodDays !== undefined && periodDays >= 0
+          ? periodDays
+          : policy.periodDays
+
+      const daysToAdd = effectivePeriodDays === 0 ? 3650 : effectivePeriodDays
+      const expiresAt = new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000).toISOString()
 
       const records = universities.map((univ) => ({
         user_id: user.id,
         university: univ,
-        total_credits: credits,
-        remaining_credits: credits,
+        total_credits: effectiveCredits,
+        remaining_credits: effectiveCredits,
         pass_type: passType,
         starts_at: now.toISOString(),
         expires_at: expiresAt,
@@ -538,14 +604,33 @@ export function useAllUserPasses() {
       const now = new Date()
       const records: any[] = []
 
-      // 1. 신규 대학 30일 마스터 패스 (각 30회, 30일)
+      // 관리자 실시간 정책 동기화
+      let policy = { periodDays: 365, baseCredits: 60 }
+      try {
+        const { data } = await supabase
+          .from('universities')
+          .select('char_per_question')
+          .eq('id', '__grading_policy__')
+          .maybeSingle()
+        if (data?.char_per_question) {
+          const parsed = JSON.parse(data.char_per_question)
+          if (typeof parsed.periodDays === 'number') policy.periodDays = parsed.periodDays
+          if (typeof parsed.baseCredits === 'number') policy.baseCredits = parsed.baseCredits
+        }
+      } catch {
+        // 기본값 사용
+      }
+
+      const daysToAdd = policy.periodDays === 0 ? 3650 : policy.periodDays
+      const expiresAt = new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000).toISOString()
+
+      // 1. 신규 대학 마스터 패스 (관리자 설정 기준: 60회, 365일)
       newUniversities.forEach((univ) => {
-        const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
         records.push({
           user_id: user.id,
           university: univ,
-          total_credits: 30,
-          remaining_credits: 30,
+          total_credits: policy.baseCredits,
+          remaining_credits: policy.baseCredits,
           pass_type: 'standard_30',
           starts_at: now.toISOString(),
           expires_at: expiresAt,
@@ -553,10 +638,9 @@ export function useAllUserPasses() {
         })
       })
 
-      // 2. 보유 대학 크레딧 추가 (+5회 단위 충전권, 30일)
+      // 2. 보유 대학 크레딧 추가 (+5회 단위 충전권, 동일 유효기간 부여)
       Object.entries(addonCreditsByUniv).forEach(([univ, credits]) => {
         if (credits > 0) {
-          const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
           records.push({
             user_id: user.id,
             university: univ,
