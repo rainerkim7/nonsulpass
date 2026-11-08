@@ -43,12 +43,13 @@ interface AllInOneParserProps {
   showNotice: (type: 'success' | 'error', message: string) => void
 }
 
-// 유료 전환 후 사용 가능한 Gemini 파서 AI 모델 옵션 목록
+// 유료 전환 후 사용 가능한 AI 파서 모델 옵션 목록 (Gemini & ChatGPT 6.1 Sol / Terra)
 const AVAILABLE_GEMINI_PARSER_MODELS = [
-  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro (정밀/수리논술 추천)' },
-  { id: 'gemini-pro-latest', name: 'Gemini Pro Latest (대용량 안정화)' },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash (고속 멀티모달)' },
-  { id: 'gemini-flash-latest', name: 'Gemini Flash Latest (초고속)' },
+  { id: 'gemini-3.1-pro-preview', name: '🌟 Gemini 3.1 Pro (정밀/수리논술 추천)' },
+  { id: 'gemini-pro-latest', name: '🚀 Gemini Pro Latest (대용량 안정화)' },
+  { id: 'gemini-3-flash-preview', name: '⚡ Gemini 3 Flash (고속 멀티모달)' },
+  { id: 'gpt-6.1-sol', name: '☀️ ChatGPT 6.1 Sol (OpenAI 초정밀 추론)' },
+  { id: 'gpt-6.1-terra', name: '🌍 ChatGPT 6.1 Terra (OpenAI 심층 분석)' },
 ]
 
 export default function AllInOneParser({

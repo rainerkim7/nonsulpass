@@ -630,7 +630,7 @@ function AdminConsoleContent() {
                     title="수험생 AI 정밀 채점 모델, 재제출 쿨다운 시간, 문항당 최대 응시횟수, 패스 유효기간 및 기본 채점 횟수를 설정합니다"
                   >
                     <Sliders size={14} style={{ color: '#2563eb' }} />
-                    채점·패스 정책 ({gradingModel === 'gemini-3.1-pro-preview' ? 'Pro 3.1' : gradingModel.includes('flash') ? 'Flash' : 'Pro'} · {cooldownMinutes === 0 ? '쿨다운 없음' : `${cooldownMinutes}분`} · {maxAttempts === 0 ? '무제한' : `최대 ${maxAttempts}회`} · {periodDays === 0 ? '무제한' : `${periodDays}일`} · {baseCredits}회)
+                    채점·패스 정책 ({gradingModel === 'gemini-3.1-pro-preview' ? 'Pro 3.1' : gradingModel === 'gpt-6.1-sol' ? 'Sol 6.1' : gradingModel === 'gpt-6.1-terra' ? 'Terra 6.1' : gradingModel.includes('flash') ? 'Flash' : 'Pro'} · {cooldownMinutes === 0 ? '쿨다운 없음' : `${cooldownMinutes}분`} · {maxAttempts === 0 ? '무제한' : `최대 ${maxAttempts}회`} · {periodDays === 0 ? '무제한' : `${periodDays}일`} · {baseCredits}회)
                   </button>
                   <span className="admin-badge-green">
                     ● 전체 {univList.length}개 대학 관리 중
@@ -1490,7 +1490,7 @@ function AdminConsoleContent() {
                   </span>
                 </div>
                 <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#475569', lineHeight: 1.5 }}>
-                  수험생이 <strong>&apos;답안 제출 후 정밀 채점 리포트 보기&apos;</strong>를 클릭했을 때 분석을 수행할 최우선 Gemini 엔진을 선택합니다.
+                  수험생이 <strong>&apos;답안 제출 후 정밀 채점 리포트 보기&apos;</strong>를 클릭했을 때 분석을 수행할 최우선 AI 엔진(Gemini 또는 ChatGPT 6.1)을 선택합니다.
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
                   <select
@@ -1514,7 +1514,8 @@ function AdminConsoleContent() {
                       { id: 'gemini-3.1-pro-preview', label: '🌟 Gemini 3.1 Pro (정밀 논리평가 / 수리논술 최적 추천)' },
                       { id: 'gemini-pro-latest', label: '🚀 Gemini Pro Latest (대용량 안정화 Pro 모델)' },
                       { id: 'gemini-3-flash-preview', label: '⚡ Gemini 3 Flash (초고속 응답 & 비용 최적화)' },
-                      { id: 'gemini-flash-latest', label: '🏎️ Gemini Flash Latest (경량 초고속 모델)' },
+                      { id: 'gpt-6.1-sol', label: '☀️ ChatGPT 6.1 Sol (OpenAI 초정밀 추론 엔진)' },
+                      { id: 'gpt-6.1-terra', label: '🌍 ChatGPT 6.1 Terra (OpenAI 대규모 심층 분석)' },
                     ].map((opt) => (
                       <option key={opt.id} value={opt.id}>
                         {opt.label}
@@ -1526,7 +1527,8 @@ function AdminConsoleContent() {
                       { label: '🌟 Pro 3.1 (권장)', val: 'gemini-3.1-pro-preview' },
                       { label: '🚀 Pro Latest', val: 'gemini-pro-latest' },
                       { label: '⚡ Flash 3', val: 'gemini-3-flash-preview' },
-                      { label: '🏎️ Flash Latest', val: 'gemini-flash-latest' },
+                      { label: '☀️ Sol 6.1', val: 'gpt-6.1-sol' },
+                      { label: '🌍 Terra 6.1', val: 'gpt-6.1-terra' },
                     ].map((preset) => (
                       <button
                         key={preset.val}

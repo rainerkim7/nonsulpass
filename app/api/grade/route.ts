@@ -1,18 +1,10 @@
 import { NextResponse } from 'next/server'
 import type { GradingReportData } from '@/types/grading'
-import { callGeminiWithFallback, PAID_PRO_GEMINI_MODELS } from '@/lib/gemini-client'
+import { callUnifiedAi } from '@/lib/ai-gateway'
 import { supabase } from '@/lib/supabase'
 
 export async function POST(req: Request) {
   try {
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: '서버에 GEMINI_API_KEY가 설정되어 있지 않습니다.' },
-        { status: 500 }
-      )
-    }
-
     const body = await req.json()
     const {
       university = '홍익대학교',
@@ -160,17 +152,14 @@ ${modelAnswer || '제시문과 발문의 논리적 일치 여부로 판단'}
       }
     }
 
-    // 관리자 지정 모델을 최우선으로 배치하고 장애 시 나머지 유료 라인업으로 폴백
-    const gradingModels = Array.from(new Set([configuredModel, ...PAID_PRO_GEMINI_MODELS]))
-
-    // 유료 등급 Gemini 모델 호출 (심층 논리 평가 및 1:1 재작성 정밀도 극대화)
-    const { text: rawResponseText, modelUsed } = await callGeminiWithFallback({
-      apiKey,
-      parts: [{ text: `${finalSystemPrompt}\n\n${finalUserPrompt}` }],
+    // 관리자 지정 모델(Gemini 또는 ChatGPT 6.1 Sol / Terra)을 통합 AI 게이트웨이로 호출
+    const { text: rawResponseText, modelUsed } = await callUnifiedAi({
+      model: configuredModel,
+      systemPrompt: finalSystemPrompt,
+      userPrompt: finalUserPrompt,
       temperature: 0.2,
       maxOutputTokens: 16384,
-      responseMimeType: 'application/json',
-      models: gradingModels,
+      jsonMode: true,
     })
 
     // 마크다운 백틱 등이 포함되어 있을 경우 정제

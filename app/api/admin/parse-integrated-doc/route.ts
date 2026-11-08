@@ -5,18 +5,10 @@
  */
 
 import { NextResponse } from 'next/server'
-import { callGeminiWithFallback, PAID_PRO_GEMINI_MODELS } from '@/lib/gemini-client'
+import { callUnifiedAi } from '@/lib/ai-gateway'
 
 export async function POST(req: Request) {
   try {
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: '서버에 GEMINI_API_KEY가 설정되어 있지 않습니다.' },
-        { status: 500 }
-      )
-    }
-
     const body = await req.json()
     const {
       univId = 'khu',
@@ -142,19 +134,16 @@ ${documentText.trim()}
       shouldParseTab3 ? '탭 3(채점기준)' : null
     ].filter(Boolean).join(', ')}] 항목만 집중 정밀 분석하여 JSON 규격으로 반환하십시오.`
 
-    // 사용자가 관리자 화면에서 선택한 모델을 최우선으로 시도하고, 장애 시 나머지 유료 라인업으로 폴백
+    // 관리자 화면에서 선택한 모델(Gemini 또는 ChatGPT 6.1 Sol / Terra)을 통합 AI 게이트웨이로 호출
     const requestedModel = typeof model === 'string' && model.trim() ? model.trim() : 'gemini-3.1-pro-preview'
-    const prioritizedModels = Array.from(new Set([requestedModel, ...PAID_PRO_GEMINI_MODELS]))
 
-    // 유료 등급 Gemini Pro 우선 호출 (65,536 최대 출력 토큰 해제로 대용량 지문·채점표 무손실 추출)
-    const { text: rawJsonText, modelUsed } = await callGeminiWithFallback({
-      apiKey,
-      parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }],
+    const { text: rawJsonText, modelUsed } = await callUnifiedAi({
+      model: requestedModel,
+      systemPrompt,
+      userPrompt,
       temperature: 0.15,
       maxOutputTokens: 65536,
-      responseMimeType: 'application/json',
-      models: prioritizedModels,
-      retryDelayMs: 1000,
+      jsonMode: true,
     })
 
     const resultJson = JSON.parse(rawJsonText)

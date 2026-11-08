@@ -29,5 +29,14 @@ if (
   }
 }
 
-// 2. 브라우저 및 서버 사이드 공용 Supabase 클라이언트 인스턴스 (빌드 시 절대 크래시 발생하지 않음)
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// 2. 브라우저 및 서버 사이드 공용 Supabase 클라이언트 인스턴스
+//    - persistSession: true (브라우저 로컬 스토리지에 로그인 세션 영구 보존)
+//    - autoRefreshToken: true (수험생이 장시간 답안을 작성하더라도 1시간 만료 전 무중단 자동 갱신)
+//    - detectSessionInUrl: true (소셜/매직링크 인증 리디렉션 감지)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+})
