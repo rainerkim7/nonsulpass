@@ -630,7 +630,7 @@ function AdminConsoleContent() {
                     title="수험생 AI 정밀 채점 모델, 재제출 쿨다운 시간, 문항당 최대 응시횟수, 패스 유효기간 및 기본 채점 횟수를 설정합니다"
                   >
                     <Sliders size={14} style={{ color: '#2563eb' }} />
-                    채점·패스 정책 ({gradingModel === 'gemini-3.1-pro-preview' ? 'Pro 3.1' : gradingModel === 'gpt-6.1-sol' ? 'Sol 6.1' : gradingModel === 'gpt-6.1-terra' ? 'Terra 6.1' : gradingModel.includes('flash') ? 'Flash' : 'Pro'} · {cooldownMinutes === 0 ? '쿨다운 없음' : `${cooldownMinutes}분`} · {maxAttempts === 0 ? '무제한' : `최대 ${maxAttempts}회`} · {periodDays === 0 ? '무제한' : `${periodDays}일`} · {baseCredits}회)
+                    채점·패스 정책 ({gradingModel === 'gemini-3.1-pro-preview' ? 'Pro 3.1' : gradingModel === 'gemini-4-argon' ? 'Argon 4' : gradingModel === 'gemini-3.8-flash' ? 'Flash 3.8' : gradingModel === 'gpt-6.1-sol' ? 'Sol 6.1' : gradingModel === 'gpt-6.1-terra' ? 'Terra 6.1' : 'Pro 3.1'} · {cooldownMinutes === 0 ? '쿨다운 없음' : `${cooldownMinutes}분`} · {maxAttempts === 0 ? '무제한' : `최대 ${maxAttempts}회`} · {periodDays === 0 ? '무제한' : `${periodDays}일`} · {baseCredits}회)
                   </button>
                   <span className="admin-badge-green">
                     ● 전체 {univList.length}개 대학 관리 중
@@ -1512,8 +1512,8 @@ function AdminConsoleContent() {
                   >
                     {[
                       { id: 'gemini-3.1-pro-preview', label: '🌟 Gemini 3.1 Pro (정밀 논리평가 / 수리논술 최적 추천)' },
-                      { id: 'gemini-pro-latest', label: '🚀 Gemini Pro Latest (대용량 안정화 Pro 모델)' },
-                      { id: 'gemini-3-flash-preview', label: '⚡ Gemini 3 Flash (초고속 응답 & 비용 최적화)' },
+                      { id: 'gemini-4-argon', label: '🚀 Gemini 4 Argon (차세대 플래그십 심층 추론)' },
+                      { id: 'gemini-3.8-flash', label: '⚡ Gemini 3.8 Flash (초고속 응답 & 균일 채점)' },
                       { id: 'gpt-6.1-sol', label: '☀️ ChatGPT 6.1 Sol (OpenAI 초정밀 추론 엔진)' },
                       { id: 'gpt-6.1-terra', label: '🌍 ChatGPT 6.1 Terra (OpenAI 대규모 심층 분석)' },
                     ].map((opt) => (
@@ -1525,8 +1525,8 @@ function AdminConsoleContent() {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                     {[
                       { label: '🌟 Pro 3.1 (권장)', val: 'gemini-3.1-pro-preview' },
-                      { label: '🚀 Pro Latest', val: 'gemini-pro-latest' },
-                      { label: '⚡ Flash 3', val: 'gemini-3-flash-preview' },
+                      { label: '🚀 Argon 4', val: 'gemini-4-argon' },
+                      { label: '⚡ Flash 3.8', val: 'gemini-3.8-flash' },
                       { label: '☀️ Sol 6.1', val: 'gpt-6.1-sol' },
                       { label: '🌍 Terra 6.1', val: 'gpt-6.1-terra' },
                     ].map((preset) => (

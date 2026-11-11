@@ -6,8 +6,40 @@
  */
 
 import React from 'react'
-import { Clock3, Loader2, FileText, Check, Trash2 } from 'lucide-react'
+import { Clock3, Loader2, FileText, Check, Trash2, Cpu } from 'lucide-react'
 import type { GradingReportData } from '@/types/grading'
+
+/**
+ * 채점 리포트에 기록된 AI 모델명을 사용자가 식별하기 쉬운 뱃지 레이블로 변환하는 헬퍼
+ */
+function formatModelBadge(modelId?: string): { label: string; bg: string; color: string; border: string } {
+  const m = (modelId || '').toLowerCase()
+  if (m.includes('terra')) {
+    return { label: 'ChatGPT 6.1 Terra', bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' }
+  }
+  if (m.includes('sol')) {
+    return { label: 'ChatGPT 6.1 Sol', bg: '#fffbeb', color: '#b45309', border: '#fde68a' }
+  }
+  if (m.includes('argon')) {
+    return { label: 'Gemini 4 Argon', bg: '#fdf4ff', color: '#a21caf', border: '#f5d0fe' }
+  }
+  if (m.includes('3.1-pro') || m.includes('pro-preview')) {
+    return { label: 'Gemini 3.1 Pro', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' }
+  }
+  if (m.includes('3.8-flash')) {
+    return { label: 'Gemini 3.8 Flash', bg: '#f5f3ff', color: '#6d28d9', border: '#ddd6fe' }
+  }
+  if (m.includes('gemini') && m.includes('flash')) {
+    return { label: 'Gemini 3.8 Flash', bg: '#f5f3ff', color: '#6d28d9', border: '#ddd6fe' }
+  }
+  if (m.includes('gemini')) {
+    return { label: 'Gemini Pro', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' }
+  }
+  if (m.includes('gpt')) {
+    return { label: 'ChatGPT', bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' }
+  }
+  return { label: 'AI 채점', bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' }
+}
 
 export interface SubmissionHistoryItem {
   id: string
@@ -176,7 +208,7 @@ export default function SubmissionHistorySection({
                   }
                 }}
               >
-                {/* 좌측 메타 정보 (회차 뱃지, 선택 상태 뱃지, 날짜, 글자 수) */}
+                {/* 좌측 메타 정보 (회차 뱃지, AI 모델 뱃지, 날짜, 글자 수) */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span
                     style={{
@@ -190,24 +222,28 @@ export default function SubmissionHistorySection({
                   >
                     #{submissionHistory.length - index}회차
                   </span>
-                  {isSelected && (
-                    <span
-                      style={{
-                        fontSize: '11px',
-                        fontWeight: 800,
-                        padding: '2.5px 8px',
-                        borderRadius: '6px',
-                        backgroundColor: '#dbeafe',
-                        color: '#1d4ed8',
-                        border: '1px solid #bfdbfe',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      <Check size={12} strokeWidth={2.5} /> 선택됨
-                    </span>
-                  )}
+                  {(() => {
+                    const modelInfo = formatModelBadge(item.grading_report?.modelUsed)
+                    return (
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 800,
+                          padding: '2.5px 8px',
+                          borderRadius: '6px',
+                          backgroundColor: modelInfo.bg,
+                          color: modelInfo.color,
+                          border: `1px solid ${modelInfo.border}`,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                        title={`채점 리포트 생성에 사용된 AI 모델: ${item.grading_report?.modelUsed || 'AI 모델'}`}
+                      >
+                        <Cpu size={12} strokeWidth={2.5} /> {modelInfo.label}
+                      </span>
+                    )
+                  })()}
                   <span style={{ fontSize: '12px', color: '#64748b' }}>{formattedDate}</span>
                   <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>·</span>
                   <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
@@ -215,20 +251,8 @@ export default function SubmissionHistorySection({
                   </span>
                 </div>
 
-                {/* 우측 점수, 합격 판정 & 삭제 액션 */}
+                {/* 우측 점수 & 삭제 액션 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 800,
-                      padding: '2.5px 8px',
-                      borderRadius: '6px',
-                      backgroundColor: isPass ? '#dcfce7' : '#fee2e2',
-                      color: isPass ? '#15803d' : '#b91c1c',
-                    }}
-                  >
-                    {item.status_verdict || (isPass ? '합격권' : '도전 권장')}
-                  </span>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '2px' }}>
                     <strong
                       style={{

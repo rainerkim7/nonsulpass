@@ -372,9 +372,34 @@
 .bottom-status-dot { width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 0 3px rgba(34, 197, 94, 0.2); display:inline-block; }
 .bottom-bar-info strong { color:#1e3156; font-weight:800; }
 .bottom-bar-info span { color:#64748b; }
-.bottom-bar-actions { display:flex; align-items:center; gap:12px; }
-.bottom-submit-btn { background:#203665!important; color:#ffffff!important; font-weight:800!important; font-size:13px!important; padding:10px 22px!important; border-radius:8px!important; transition:all .2s!important; box-shadow:0 4px 14px rgba(32, 54, 101, 0.2)!important; }
+.bottom-bar-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.bottom-submit-btn { background:#203665!important; color:#ffffff!important; font-weight:800!important; font-size:13px!important; padding:10px 22px!important; border-radius:8px!important; transition:all .2s!important; box-shadow:0 4px 14px rgba(32, 54, 101, 0.2)!important; white-space:nowrap; flex-shrink:0; }
 .bottom-submit-btn:hover { background:#2c4987!important; transform:translateY(-1px)!important; box-shadow:0 6px 18px rgba(32, 54, 101, 0.3)!important; }
+
+/* 관리자 전용 채점 프롬프트 실시간 검사 & 튜닝 버튼 */
+.admin-inspector-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #4338ca 0%, #312e81 100%);
+  color: #ffffff;
+  border: 1px solid #4f46e5;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(67, 56, 202, 0.25);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+.admin-inspector-btn:hover {
+  background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(67, 56, 202, 0.35);
+}
 @media (max-width:760px) { .bottom-bar { flex-direction:column; align-items:stretch; gap:10px; padding:12px 18px; } .bottom-submit-btn { width:100%; justify-content:center; } }
 
 /* AI 채점 결과 리포트 가독성 최적화 */
@@ -438,8 +463,8 @@
   .passage-body p { font-size: 16.5px !important; line-height: 1.92 !important; font-weight: 450 !important; }
 }
 
-@media (max-width:900px) { .topbar,.report-topbar { padding:0 18px; }.topbar-controls { gap:7px; }.timer,.mode-toggle,.context-bar .exam-status { display:none; }.submit-button { padding:8px!important; font-size:0!important; }.submit-button svg { margin:0!important; }.workspace { display:block; }.splitter { display:none; }.reading-panel,.writing-panel { padding:27px 18px; }.writing-panel { border-top:1px solid #e3e7ee; }.report-container { padding:30px 18px; }.report-heading,.score-hero { display:block; }.report-badge { display:inline-block; margin-top:17px; }.kpi-grid { min-width:0; margin-top:25px; }.kpi-card { border-left:0; border-top:1px solid #e8ebf0; }.report-grid { grid-template-columns:1fr; }.mobile-menu { display:block; }.home-topbar { padding:0 18px; } }
-@media (max-width:560px) { .brand-subtitle,.select-wrap { display:none; }.topbar .brand-name { font-size:15px; }.prompt-card { padding:18px 16px; }.prompt-tag { font-size:13px; }.prompt-title-row { display:block; }.prompt-card h2 { font-size:17px; line-height:1.5; margin-top:6px; }.prompt-limit { display:inline-block; margin-top:6px; font-size:12px; }.prompt-note { font-size:14px; line-height:1.7; margin-top:8px; }.passage-card { padding:18px 16px; }.passage-body p { font-size:14.5px; line-height:1.8; margin-bottom:14px; }.editor-heading { flex-direction:column; align-items:flex-start; gap:10px; }.editor-top-actions { align-items:flex-start; width:100%; }.editor-counts { justify-content:flex-start; }.editor-wrap { min-height:380px; }.editor-wrap textarea { min-height:380px; padding:16px 16px; font-size:15px; }.score-main { display:block; }.score-ring { margin-bottom:20px; }.kpi-grid { grid-template-columns:1fr; }.kpi-card { padding:12px 0; }.report-heading h1 { font-size:22px; }.report-nav .nav-slash,.report-nav strong { display:none; } }
+@media (max-width:900px) { .topbar,.report-topbar { padding:0 18px; }.topbar-controls { gap:7px; }.timer,.context-bar .exam-status { display:none; }.submit-button { padding:8px!important; font-size:0!important; }.submit-button svg { margin:0!important; }.workspace { display:block; }.splitter { display:none; }.reading-panel,.writing-panel { padding:27px 18px; }.writing-panel { border-top:1px solid #e3e7ee; }.report-container { padding:30px 18px; }.report-heading,.score-hero { display:block; }.report-badge { display:inline-block; margin-top:17px; }.kpi-grid { min-width:0; margin-top:25px; }.kpi-card { border-left:0; border-top:1px solid #e8ebf0; }.report-grid { grid-template-columns:1fr; }.mobile-menu { display:none !important; }.home-topbar { padding:0 18px; } .bottom-bar { flex-wrap:wrap; gap:12px; padding:12px 18px; } .bottom-bar-info { width:100%; } .bottom-bar-actions { width:100%; justify-content:flex-end; gap:8px; flex-wrap:wrap; } .grading-notice-banner { width:100%; justify-content:center; text-align:center; font-size:12px; padding:7px 12px; margin-bottom:2px; } }
+@media (max-width:560px) { .mode-toggle button { padding:5px 8px; font-size:11.5px; } .brand-subtitle,.select-wrap { display:none; }.topbar .brand-name { font-size:15px; }.prompt-card { padding:18px 16px; }.prompt-tag { font-size:13px; }.prompt-title-row { display:block; }.prompt-card h2 { font-size:17px; line-height:1.5; margin-top:6px; }.prompt-limit { display:inline-block; margin-top:6px; font-size:12px; }.prompt-note { font-size:14px; line-height:1.7; margin-top:8px; }.passage-card { padding:18px 16px; }.passage-body p { font-size:14.5px; line-height:1.8; margin-bottom:14px; }.editor-heading { flex-direction:column; align-items:flex-start; gap:10px; }.editor-top-actions { align-items:flex-start; width:100%; }.editor-counts { justify-content:flex-start; }.editor-wrap { min-height:380px; }.editor-wrap textarea { min-height:380px; padding:16px 16px; font-size:15px; }.score-main { display:block; }.score-ring { margin-bottom:20px; }.kpi-grid { grid-template-columns:1fr; }.kpi-card { padding:12px 0; }.report-heading h1 { font-size:22px; }.report-nav .nav-slash,.report-nav strong { display:none; } .bottom-bar { flex-direction:column; align-items:stretch; gap:10px; padding:12px 14px; } .bottom-bar-info { display:none; } .bottom-bar-actions { flex-direction:column; align-items:stretch; width:100%; gap:8px; } .admin-inspector-btn { width:100%; justify-content:center; font-size:12px; padding:9px 12px; } .bottom-submit-btn { width:100% !important; justify-content:center !important; font-size:12.5px !important; padding:10px 12px !important; } .grading-notice-banner { width:100%; justify-content:center; font-size:11.5px; padding:6px 10px; line-height:1.4; } }
 
 /* ========================================================
    홍익대학교 논술 전용 상세 페이지 스타일

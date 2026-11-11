@@ -8,7 +8,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import {
   Clock3,
-  Menu,
   FileText,
   Check,
   RotateCcw,
@@ -98,17 +97,18 @@ export default function ExamWorkspace({
   // 문제 탭 전환 상태 (q1, q2, q3 등 동적 지원)
   const [activeQuestion, setActiveQuestion] = useState<string>(initialQuestion || 'q1')
 
-  // 문제별 작성 답안 및 활성 리포트 localStorage 실시간 자동 보존 및 복원 키 헬퍼
-  const getDraftStorageKey = (examId: string, qKey: string) => `nonsul_draft_${examId || 'common'}_${qKey}`
-  const getActiveSubKey = (examId: string, qKey: string) => `nonsul_active_sub_${examId || 'common'}_${qKey}`
-  const getActiveReportKey = (examId: string, qKey: string) => `nonsul_active_report_${examId || 'common'}_${qKey}`
+  // 문제별 작성 답안 및 활성 리포트 localStorage 실시간 자동 보존 및 복원 키 헬퍼 (사용자별 ID 격리 적용)
+  const currentUserId = user ? user.id : 'guest'
+  const getDraftStorageKey = (examId: string, qKey: string) => `nonsul_draft_${currentUserId}_${examId || 'common'}_${qKey}`
+  const getActiveSubKey = (examId: string, qKey: string) => `nonsul_active_sub_${currentUserId}_${examId || 'common'}_${qKey}`
+  const getActiveReportKey = (examId: string, qKey: string) => `nonsul_active_report_${currentUserId}_${examId || 'common'}_${qKey}`
 
   // 문제별 작성 답안 상태 (컴포넌트 마운트 시 localStorage에 저장된 임시 답안 자동 복원)
   const [answers, setAnswers] = useState<Record<string, string>>(() => {
     if (typeof window === 'undefined') return {}
     try {
       const targetExam = selectedExamId || 'common'
-      const key = `nonsul_draft_${targetExam}_${initialQuestion || 'q1'}`
+      const key = `nonsul_draft_${currentUserId}_${targetExam}_${initialQuestion || 'q1'}`
       const saved = localStorage.getItem(key)
       return saved ? { [initialQuestion || 'q1']: saved } : {}
     } catch {
@@ -132,7 +132,7 @@ export default function ExamWorkspace({
     if (typeof window === 'undefined') return null
     try {
       const targetExam = selectedExamId || 'common'
-      const key = `nonsul_active_sub_${targetExam}_${initialQuestion || 'q1'}`
+      const key = `nonsul_active_sub_${currentUserId}_${targetExam}_${initialQuestion || 'q1'}`
       return localStorage.getItem(key)
     } catch {
       return null
@@ -764,19 +764,18 @@ export default function ExamWorkspace({
     }
   }
 
-  // 문항(activeQuestion) 또는 시험(selectedExamId) 전환 시 localStorage 임시 답안 및 활성 회차 복원
+  // 사용자(user), 문항(activeQuestion), 시험(selectedExamId) 전환 시 localStorage 임시 답안 및 활성 회차 복원
+  // (로그아웃하거나 다른 사용자로 로그인 시 이전 사용자의 답안과 이력이 즉시 초기화/분리됨)
   useEffect(() => {
     if (typeof window === 'undefined') return
     const draftKey = getDraftStorageKey(selectedExamId, activeQuestion)
-    const savedDraft = localStorage.getItem(draftKey)
-    if (savedDraft && !answers[activeQuestion]) {
-      setAnswers(prev => ({ ...prev, [activeQuestion]: savedDraft }))
-    }
+    const savedDraft = localStorage.getItem(draftKey) || ''
+    setAnswers(prev => ({ ...prev, [activeQuestion]: savedDraft }))
 
     const subKey = getActiveSubKey(selectedExamId, activeQuestion)
     const savedSubId = localStorage.getItem(subKey)
     setSelectedSubmissionId(savedSubId || null)
-  }, [selectedExamId, activeQuestion])
+  }, [currentUserId, selectedExamId, activeQuestion])
 
   // 답안 작성 및 변경 시 React State + localStorage 실시간 자동 저장
   const handleAnswerChange = (val: string) => {
@@ -1213,9 +1212,6 @@ export default function ExamWorkspace({
               <strong>00:54:12</strong>
             </div>
           </div>
-          <button className="mobile-menu" aria-label="메뉴">
-            <Menu />
-          </button>
         </div>
       </header>
 
@@ -1756,26 +1752,12 @@ export default function ExamWorkspace({
               <span>{gradingNotice}</span>
             </div>
           )}
+          {/* 🔍 관리자 전용 채점 프롬프트 실시간 검사 및 즉석 튜닝 모달 오픈 버튼 */}
           {isAdmin && (
             <button
               type="button"
               onClick={() => setShowPromptInspector(true)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '8px 14px',
-                background: 'linear-gradient(135deg, #4338ca 0%, #312e81 100%)',
-                color: '#ffffff',
-                border: '1px solid #4f46e5',
-                borderRadius: '8px',
-                fontSize: '12.5px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                boxShadow: '0 2px 6px rgba(67, 56, 202, 0.25)',
-                marginRight: '6px',
-                transition: 'all 0.15s ease'
-              }}
+              className="admin-inspector-btn"
               title="현재 문항 채점 시 Gemini API로 전송되는 프롬프트를 확인하고 즉석 튜닝합니다"
             >
               <Terminal size={14} />

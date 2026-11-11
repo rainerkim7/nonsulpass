@@ -32,24 +32,22 @@ export interface GeminiCallResult {
 }
 
 /**
- * 논술패스 Lab 유료 등급(Pay-as-you-go) 고성능 Pro 우선 모델 폴백 라인업
- * - 정밀 논술 채점 및 입학처 대용량 통합 문서 올인원 추출에 사용
+ * 논술패스 Lab 유료 등급(Pay-as-you-go) 고성능 Gemini 모델 라인업
+ * - Gemini 3.1 Pro, Gemini 4 Argon, Gemini 3.8 Flash
  */
 export const PAID_PRO_GEMINI_MODELS = [
   'gemini-3.1-pro-preview',
-  'gemini-pro-latest',
-  'gemini-3-flash-preview',
-  'gemini-flash-latest',
+  'gemini-4-argon',
+  'gemini-3.8-flash',
 ]
 
 /**
- * 논술패스 Lab 고속 비전/범용 모델 폴백 라인업 (손글씨 OCR 등 빠른 응답용)
+ * 논술패스 Lab 고속 비전/범용 모델 라인업 (손글씨 OCR 등 빠른 응답용)
  */
 export const DEFAULT_GEMINI_MODELS = [
-  'gemini-3-flash-preview',
-  'gemini-flash-latest',
+  'gemini-3.8-flash',
   'gemini-3.1-pro-preview',
-  'gemini-pro-latest',
+  'gemini-4-argon',
 ]
 
 /**
