@@ -23,6 +23,9 @@ function formatModelBadge(modelId?: string): { label: string; bg: string; color:
   if (m.includes('argon')) {
     return { label: 'Gemini 4 Argon', bg: '#fdf4ff', color: '#a21caf', border: '#f5d0fe' }
   }
+  if (m.includes('hydrogen')) {
+    return { label: 'Gemini 4 Hydrogen', bg: '#ecfeff', color: '#0e7490', border: '#a5f3fc' }
+  }
   if (m.includes('3.1-pro') || m.includes('pro-preview')) {
     return { label: 'Gemini 3.1 Pro', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' }
   }

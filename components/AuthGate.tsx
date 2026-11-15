@@ -9,6 +9,7 @@
 import React from 'react'
 import { AuthProvider, useAuth, UserRole } from '@/lib/auth-context'
 import AuthModal from '@/components/auth/AuthModal'
+import ProfileEditModal from '@/components/auth/ProfileEditModal'
 
 // 기존 파일들(HomePage, ExamWorkspace, AdminPage 등)과의 100% 호환용 export
 export { useAuth }
@@ -31,6 +32,8 @@ function AuthGateInner({ children }: { children: React.ReactNode }) {
       {children}
       {/* 전역 로그인 / 회원가입 팝업 모달 */}
       <AuthModal />
+      {/* 전역 개인정보 수정 모달 */}
+      <ProfileEditModal />
     </>
   )
 }

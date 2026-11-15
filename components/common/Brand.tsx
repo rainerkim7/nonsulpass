@@ -10,9 +10,11 @@ import { GraduationCap } from 'lucide-react'
 
 interface BrandProps {
   onHome?: () => void
+  /** 상단 슬림 헤더 등에서 부제("대입 논술의 새로운 기준")를 숨길 때 사용 */
+  hideSubtitle?: boolean
 }
 
-export default function Brand({ onHome }: BrandProps) {
+export default function Brand({ onHome, hideSubtitle = false }: BrandProps) {
   return (
     <div
       className={`brand-block ${onHome ? 'cursor-pointer select-none transition-all hover:opacity-80 active:scale-[0.98]' : ''}`}
@@ -28,7 +30,9 @@ export default function Brand({ onHome }: BrandProps) {
         <p className="brand-name">
           논술패스 <span>Lab</span>
         </p>
-        <p className="brand-subtitle">대입 논술의 새로운 기준</p>
+        {!hideSubtitle && (
+          <p className="brand-subtitle">대입 논술의 새로운 기준</p>
+        )}
       </div>
     </div>
   )

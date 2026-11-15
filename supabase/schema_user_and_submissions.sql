@@ -7,11 +7,16 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   name TEXT NOT NULL DEFAULT '수험생',
+  high_school_region TEXT DEFAULT '서울특별시',
   target_university TEXT DEFAULT '미정',
   role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- 기존 테이블에 고등학교 소재 지역 컬럼 추가 (마이그레이션 안전성 보장)
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS high_school_region TEXT DEFAULT '서울특별시';
 
 -- 2. 학생 답안 및 AI 채점 리포트 영구 저장 테이블
 CREATE TABLE IF NOT EXISTS public.student_submissions (
@@ -38,18 +43,20 @@ CREATE INDEX IF NOT EXISTS idx_submissions_created_at ON public.student_submissi
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, email, name, target_university, role)
+  INSERT INTO public.profiles (id, email, name, high_school_region, target_university, role)
   VALUES (
     NEW.id,
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'name', '수험생'),
-    COALESCE(NEW.raw_user_meta_data->>'target_university', '홍익대학교'),
+    COALESCE(NEW.raw_user_meta_data->>'high_school_region', '서울특별시'),
+    COALESCE(NEW.raw_user_meta_data->>'target_university', '미정'),
     COALESCE(NEW.raw_user_meta_data->>'role', 'user')
   )
   ON CONFLICT (id) DO UPDATE
   SET
     email = EXCLUDED.email,
     name = COALESCE(EXCLUDED.name, profiles.name),
+    high_school_region = COALESCE(EXCLUDED.high_school_region, profiles.high_school_region),
     target_university = COALESCE(EXCLUDED.target_university, profiles.target_university),
     updated_at = now();
   RETURN NEW;

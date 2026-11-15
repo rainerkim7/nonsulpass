@@ -3,8 +3,15 @@
  * @description 대학별 패스, 채점 크레딧, 결제 주문 및 어뷰징 검증 관련 TypeScript 타입 정의
  */
 
-// 이용권 유형: 기본 30회 패스, 추가 충전권 5회, 추가 충전권 10회
-export type PassType = 'standard_30' | 'addon_5' | 'addon_10'
+// 이용권 유형: 패스 크래딧 4종(10/30/60/90회) 및 기존 대학별 패스 호환 타입
+export type PassType =
+  | 'credit_10'
+  | 'credit_30'
+  | 'credit_60'
+  | 'credit_90'
+  | 'standard_30'
+  | 'addon_5'
+  | 'addon_10'
 
 // 주문 결제 상태
 export type OrderStatus = 'READY' | 'PAID' | 'FAILED' | 'CANCELLED'
@@ -90,47 +97,63 @@ export interface PassProductItem {
 }
 
 /**
- * 지원하는 기본 유료 상품 목록 상수
+ * 지원하는 전 대학 패스 크래딧 패키지 목록 상수
+ * (10회 3,300원 / 30회 9,900원 / 60회 19,800원 / 90회 29,700원)
  */
 export const PASS_PRODUCTS: PassProductItem[] = [
   {
-    id: 'standard_30',
-    name: '30일 대학 마스터 패스',
-    price: 19800,
-    badge: '인기 / 추천',
-    credits: 30,
-    periodDays: 30,
-    description: '해당 대학 15개 전 시험 세트 + 30회 자율 채점 크레딧',
-    features: [
-      '해당 대학 15개 시험 (기출+모의+예상) 전체 해금',
-      'AI 정밀 첨삭 및 다차원 루브릭 리포트 30회',
-      '초안 및 퇴고 답안 자율 분배 훈련',
-      '내 첨삭 보관함 무제한 열람 및 복습'
-    ]
-  },
-  {
-    id: 'addon_5',
-    name: '추가 채점권 5회',
-    price: 4900,
-    credits: 5,
-    periodDays: 30,
-    description: '취약한 고난도 문항 집중 퇴고를 위한 알짜 충전',
-    features: [
-      '채점 크레딧 +5회 즉시 추가 충전',
-      '기존 마스터 패스 유효기간 내 사용 가능'
-    ]
-  },
-  {
-    id: 'addon_10',
-    name: '추가 채점권 10회',
-    price: 8900,
-    badge: '할인 혜택',
+    id: 'credit_10',
+    name: '패스 크래딧 10회',
+    price: 3300,
     credits: 10,
-    periodDays: 30,
-    description: '수시 파이널 직전 완벽한 최종 실전 대비',
+    periodDays: 365,
+    description: '부담 없이 시작하는 18개 전 대학 자유 이용권 10회',
     features: [
-      '채점 크레딧 +10회 즉시 추가 충전 (약 9% 할인)',
-      '도표/다면 분석 문항 무제한 심화 퇴고'
-    ]
-  }
+      '대학 제한 없이 18개 전 대학 자유 응시',
+      'AI 정밀 첨삭 및 루브릭 리포트 10회',
+      'PDF 리포트 저장 및 첨삭 보관함 복습',
+    ],
+  },
+  {
+    id: 'credit_30',
+    name: '패스 크래딧 30회',
+    price: 9900,
+    badge: '인기',
+    credits: 30,
+    periodDays: 365,
+    description: '목표 대학 여러 곳의 기출·모의논술을 균형 있게 훈련',
+    features: [
+      '대학 제한 없이 18개 전 대학 자유 응시',
+      'AI 정밀 첨삭 및 루브릭 리포트 30회',
+      '초안 및 퇴고 답안 자율 분배 훈련',
+    ],
+  },
+  {
+    id: 'credit_60',
+    name: '패스 크래딧 60회',
+    price: 19800,
+    badge: '가장 추천',
+    credits: 60,
+    periodDays: 365,
+    description: '수시 논술 6개 목표 대학 실전 완성을 위한 표준 패키지',
+    features: [
+      '대학 제한 없이 18개 전 대학 자유 응시',
+      'AI 정밀 첨삭 및 루브릭 리포트 60회',
+      '목표 대학 6곳 집중 파이널 대비',
+    ],
+  },
+  {
+    id: 'credit_90',
+    name: '패스 크래딧 90회',
+    price: 29700,
+    badge: '대용량 집중',
+    credits: 90,
+    periodDays: 365,
+    description: '전 문항 다회차 퇴고까지 넉넉하게 대비하는 집중 패키지',
+    features: [
+      '대학 제한 없이 18개 전 대학 자유 응시',
+      'AI 정밀 첨삭 및 루브릭 리포트 90회',
+      '고난도 문항 반복 첨삭 및 파이널 총정리',
+    ],
+  },
 ]

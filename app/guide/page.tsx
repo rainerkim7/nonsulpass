@@ -22,6 +22,7 @@ import {
   Lightbulb,
 } from 'lucide-react'
 import Brand from '@/components/common/Brand'
+import SiteHeader from '@/components/common/SiteHeader'
 
 // 4대 핵심 논술 유형 데이터 정의
 interface EssayTypeGuide {
@@ -119,43 +120,7 @@ export default function EssayGuidePage() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
       {/* 상단 글로벌 헤더 */}
-      <header className="home-topbar">
-        <Brand onHome={() => router.push('/')} />
-        <nav className="home-nav" aria-label="주요 메뉴">
-          <button
-            type="button"
-            onClick={() => router.push('/guide')}
-            className="text-blue-600 font-bold text-sm cursor-pointer"
-          >
-            논술 글쓰기
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/writing')}
-            className="text-slate-600 hover:text-blue-700 font-semibold text-sm transition cursor-pointer"
-          >
-            논술 연습장
-          </button>
-        </nav>
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={() => router.push('/writing')}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-2xs transition cursor-pointer"
-          >
-            <PenTool className="w-3.5 h-3.5" />
-            논술 연습장 가기
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/')}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs transition cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            메인으로
-          </button>
-        </div>
-      </header>
+      <SiteHeader />
 
       {/* 히어로 배너 섹션 */}
       <section className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white py-12 px-6 border-b border-slate-800">

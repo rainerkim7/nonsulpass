@@ -15,8 +15,33 @@ export interface UserProfile {
   id: string
   email: string
   name: string
+  high_school_region?: string
   target_university?: string
   role: UserRole
+}
+
+export const MAX_TARGET_UNIVERSITIES = 6
+
+/**
+ * profiles.target_university 문자열(단일 대학명 또는 JSON 배열)을 최대 6개 배열로 안전하게 파싱
+ */
+export function parseTargetUniversities(raw?: string | null): string[] {
+  if (!raw || raw === '미정') return []
+  const trimmed = raw.trim()
+  if (!trimmed) return []
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          .slice(0, MAX_TARGET_UNIVERSITIES)
+      }
+    } catch {
+      // JSON 파싱 실패 시 단일 문자열 폴백
+    }
+  }
+  return [trimmed]
 }
 
 export interface AuthContextType {
@@ -29,14 +54,26 @@ export interface AuthContextType {
   userDisplayName: string
   // 호환용 레거시 필드 (기존 컴포넌트에서 user: string으로 참조하던 경우 지원)
   userLegacy: string | null
+  // 목표 대학 목록 (최대 6개) 및 업데이트 함수
+  targetUniversities: string[]
+  updateTargetUniversities: (universities: string[]) => Promise<boolean>
+  updateProfile: (params: {
+    name: string
+    highSchoolRegion: string
+    newPassword?: string
+  }) => Promise<{ error: string | null }>
   login: (email: string, password: string) => Promise<{ error: string | null }>
-  signup: (email: string, password: string, name: string, targetUniversity?: string) => Promise<{ error: string | null }>
+  signup: (email: string, password: string, name: string, highSchoolRegion?: string) => Promise<{ error: string | null }>
   logout: () => Promise<void>
   // 인증 모달 제어
   isAuthModalOpen: boolean
   authModalMode: 'login' | 'signup'
   openAuthModal: (mode?: 'login' | 'signup') => void
   closeAuthModal: () => void
+  // 개인정보 수정 모달 제어
+  isProfileModalOpen: boolean
+  openProfileModal: () => void
+  closeProfileModal: () => void
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -48,6 +85,9 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   userDisplayName: '게스트',
   userLegacy: null,
+  targetUniversities: [],
+  updateTargetUniversities: async () => false,
+  updateProfile: async () => ({ error: null }),
   login: async () => ({ error: null }),
   signup: async () => ({ error: null }),
   logout: async () => {},
@@ -55,6 +95,9 @@ const AuthContext = createContext<AuthContextType>({
   authModalMode: 'login',
   openAuthModal: () => {},
   closeAuthModal: () => {},
+  isProfileModalOpen: false,
+  openProfileModal: () => {},
+  closeProfileModal: () => {},
 })
 
 export const useAuth = () => useContext(AuthContext)
@@ -68,6 +111,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // 로그인 / 회원가입 전역 팝업 모달 상태
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false)
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login')
+  // 개인정보 수정 모달 상태
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false)
 
   // Supabase profiles 테이블에서 사용자 세부 프로필(이름, 역할 등) 조회
   const fetchProfile = useCallback(async (userId: string, userEmail: string, metaName?: string) => {
@@ -91,7 +136,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: userId,
           email: userEmail,
           name: metaName || userEmail.split('@')[0] || '수험생',
-          target_university: '홍익대학교',
+          high_school_region: '서울특별시',
+          target_university: '미정',
           role: userEmail.includes('admin') ? 'admin' : 'user'
         }
         try {
@@ -184,12 +230,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string,
     password: string,
     name: string,
-    targetUniversity?: string
+    highSchoolRegion?: string
   ): Promise<{ error: string | null }> => {
     try {
       const cleanEmail = email.trim()
       const cleanName = name.trim() || '수험생'
-      const cleanTarget = targetUniversity || '홍익대학교'
+      const cleanRegion = highSchoolRegion || '서울특별시'
 
       const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
@@ -197,7 +243,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         options: {
           data: {
             name: cleanName,
-            target_university: cleanTarget,
+            high_school_region: cleanRegion,
             role: cleanEmail.includes('admin') ? 'admin' : 'user'
           }
         }
@@ -214,7 +260,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             id: data.user.id,
             email: cleanEmail,
             name: cleanName,
-            target_university: cleanTarget,
+            high_school_region: cleanRegion,
             role: cleanEmail.includes('admin') ? 'admin' : 'user'
           })
         } catch (e) {}
@@ -241,6 +287,111 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // 4. 목표 대학 목록(최대 6개) 저장 및 로컬 프로필 즉시 동기화
+  const updateTargetUniversities = async (universities: string[]): Promise<boolean> => {
+    if (!user) return false
+    try {
+      const cleaned = Array.from(new Set(universities.filter(Boolean))).slice(0, MAX_TARGET_UNIVERSITIES)
+      const serialized = JSON.stringify(cleaned)
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ target_university: serialized })
+        .eq('id', user.id)
+
+      if (error) {
+        console.error('[AuthProvider] 목표 대학 저장 오류:', error.message)
+        return false
+      }
+
+      setProfile((prev) =>
+        prev
+          ? { ...prev, target_university: serialized }
+          : {
+              id: user.id,
+              email: user.email || '',
+              name: user.user_metadata?.name || user.email?.split('@')[0] || '수험생',
+              target_university: serialized,
+              role: 'user',
+            }
+      )
+      return true
+    } catch (err) {
+      console.error('[AuthProvider] 목표 대학 저장 예외:', err)
+      return false
+    }
+  }
+
+  // 5. 개인정보(이름, 고등학교 소재 지역, 비밀번호) 수정
+  const updateProfile = async ({
+    name,
+    highSchoolRegion,
+    newPassword,
+  }: {
+    name: string
+    highSchoolRegion: string
+    newPassword?: string
+  }): Promise<{ error: string | null }> => {
+    if (!user) return { error: '로그인 상태가 아닙니다.' }
+    try {
+      const cleanName = name.trim()
+      if (!cleanName) return { error: '이름을 입력해 주세요.' }
+      const cleanRegion = highSchoolRegion || '서울특별시'
+
+      // (1) Supabase Auth 메타데이터 및 비밀번호(입력 시) 업데이트
+      const authPayload: {
+        data: { name: string; high_school_region: string }
+        password?: string
+      } = {
+        data: {
+          name: cleanName,
+          high_school_region: cleanRegion,
+        },
+      }
+      if (newPassword && newPassword.trim().length > 0) {
+        authPayload.password = newPassword.trim()
+      }
+
+      const { data: authData, error: authError } = await supabase.auth.updateUser(authPayload)
+      if (authError) {
+        return { error: authError.message }
+      }
+      if (authData?.user) {
+        setUser(authData.user)
+      }
+
+      // (2) profiles 테이블 동기화
+      const { error: dbError } = await supabase
+        .from('profiles')
+        .update({
+          name: cleanName,
+          high_school_region: cleanRegion,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id)
+
+      if (dbError) {
+        return { error: dbError.message }
+      }
+
+      setProfile((prev) =>
+        prev
+          ? { ...prev, name: cleanName, high_school_region: cleanRegion }
+          : {
+              id: user.id,
+              email: user.email || '',
+              name: cleanName,
+              high_school_region: cleanRegion,
+              role: user.email?.includes('admin') ? 'admin' : 'user',
+            }
+      )
+
+      return { error: null }
+    } catch (err: any) {
+      return { error: err.message || '개인정보 수정 중 오류가 발생했습니다.' }
+    }
+  }
+
   const openAuthModal = (mode: 'login' | 'signup' = 'login') => {
     setAuthModalMode(mode)
     setIsAuthModalOpen(true)
@@ -250,11 +401,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsAuthModalOpen(false)
   }
 
+  const openProfileModal = () => {
+    setIsProfileModalOpen(true)
+  }
+
+  const closeProfileModal = () => {
+    setIsProfileModalOpen(false)
+  }
+
   const isAuthenticated = !!user
   const role: UserRole = profile?.role || (user?.email?.includes('admin') ? 'admin' : 'user')
   const isAdmin = role === 'admin'
   const userDisplayName = profile?.name || user?.user_metadata?.name || user?.email?.split('@')[0] || '수험생'
   const userLegacy = userDisplayName
+  const targetUniversities = parseTargetUniversities(profile?.target_university)
 
   return (
     <AuthContext.Provider
@@ -267,6 +427,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAdmin,
         userDisplayName,
         userLegacy,
+        targetUniversities,
+        updateTargetUniversities,
+        updateProfile,
         login,
         signup,
         logout,
@@ -274,6 +437,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         authModalMode,
         openAuthModal,
         closeAuthModal,
+        isProfileModalOpen,
+        openProfileModal,
+        closeProfileModal,
       }}
     >
       {children}

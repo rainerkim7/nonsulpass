@@ -220,7 +220,7 @@ ${modelAnswer || '제시문과 발문의 논리적 일치 여부로 판단'}`
                 AI 채점 프롬프트 실시간 검사기 & 튜닝 샌드박스
               </h3>
               <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
-                {university} · {questionLabel} 채점 시 Google Gemini 3.5 Flash로 전송되는 원문 프롬프트를 확인하고 즉석 튜닝합니다.
+                {university} · {questionLabel} 채점 시 AI 엔진(Gemini / ChatGPT)으로 전송되는 원문 프롬프트를 확인하고 즉석 튜닝합니다.
               </p>
             </div>
           </div>

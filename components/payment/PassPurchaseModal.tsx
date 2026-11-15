@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react'
-import { X, Check, Sparkles, CreditCard, ShieldCheck, Zap, AlertCircle, Loader2 } from 'lucide-react'
+import { X, Check, Sparkles, CreditCard, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react'
 import { PASS_PRODUCTS, PassProductItem, PassType } from '@/types/payment'
 import { useAuth } from '@/lib/auth-context'
 import { supabase } from '@/lib/supabase'
@@ -14,7 +14,7 @@ import { supabase } from '@/lib/supabase'
 interface PassPurchaseModalProps {
   isOpen: boolean
   onClose: () => void
-  university: string
+  university?: string
   onPaymentSuccess?: (credits: number) => void
   onGrantPass: (passType: PassType, credits?: number, periodDays?: number) => Promise<boolean>
 }
@@ -28,15 +28,18 @@ export default function PassPurchaseModal({
 }: PassPurchaseModalProps) {
   const { user } = useAuth()
   const [products, setProducts] = useState<PassProductItem[]>(PASS_PRODUCTS)
-  const [selectedProduct, setSelectedProduct] = useState<PassProductItem>(PASS_PRODUCTS[0])
+  // 기본 추천 상품: 패스 크래딧 30회 (9,900원)
+  const [selectedProduct, setSelectedProduct] = useState<PassProductItem>(PASS_PRODUCTS[1] || PASS_PRODUCTS[0])
   const [payMethod, setPayMethod] = useState<'card' | 'kakaopay' | 'naverpay' | 'tosspay'>('kakaopay')
   const [isProcessing, setIsProcessing] = useState(false)
   const [successNotice, setSuccessNotice] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  // 관리자 설정 정책(기본 365일, 60회 등) 로드하여 마스터 패스 상품 정보 동적 반영
+  // 관리자 설정 정책(기본 365일 등) 로드하여 패스 크래딧 패키지 유효기간 동적 반영
   useEffect(() => {
     if (!isOpen) return
+    setErrorMsg(null)
+    setSuccessNotice(null)
     const loadPolicy = async () => {
       try {
         const { data } = await supabase
@@ -46,43 +49,23 @@ export default function PassPurchaseModal({
           .maybeSingle()
 
         let periodDays = 365
-        let baseCredits = 60
 
         if (data?.char_per_question) {
           try {
             const parsed = JSON.parse(data.char_per_question)
             if (typeof parsed.periodDays === 'number') periodDays = parsed.periodDays
-            if (typeof parsed.baseCredits === 'number') baseCredits = parsed.baseCredits
           } catch {
             // 기본값 유지
           }
         }
 
-        const updatedProducts: PassProductItem[] = PASS_PRODUCTS.map((prod) => {
-          if (prod.id === 'standard_30') {
-            const periodText = periodDays === 0 ? '무제한' : `${periodDays}일`
-            return {
-              ...prod,
-              name: `${periodText} 대학 마스터 패스`,
-              credits: baseCredits,
-              periodDays,
-              description: `결제 즉시 해당 대학 ${periodText}간 ${baseCredits}회 AI 정밀 첨삭 이용권 지급`,
-              features: [
-                `해당 대학 전체 기출/모의/예상 15세트`,
-                `1:1 정밀 다차원 첨삭 리포트 ${baseCredits}회`,
-                periodDays === 0 ? '이용 기간 무제한' : `결제일로부터 ${periodDays}일간 유효`,
-                `문항별 모범답안 및 세부 채점표 무제한 열람`,
-              ],
-            }
-          }
-          return {
-            ...prod,
-            periodDays,
-          }
-        })
+        const updatedProducts: PassProductItem[] = PASS_PRODUCTS.map((prod) => ({
+          ...prod,
+          periodDays,
+        }))
 
         setProducts(updatedProducts)
-        setSelectedProduct(updatedProducts[0])
+        setSelectedProduct((prev) => updatedProducts.find((p) => p.id === prev.id) || updatedProducts[1] || updatedProducts[0])
       } catch (err) {
         console.warn('관리자 패스 정책 로드 실패:', err)
       }
@@ -111,7 +94,7 @@ export default function PassPurchaseModal({
       )
 
       if (success) {
-        setSuccessNotice(`🎉 ${university} [${selectedProduct.name}] 결제가 완료되었습니다! (채점 크레딧 +${selectedProduct.credits}회 지급)`)
+        setSuccessNotice(`🎉 전 대학 [${selectedProduct.name}] 결제가 완료되었습니다! (패스 크래딧 +${selectedProduct.credits}회 충전)`)
         if (onPaymentSuccess) {
           onPaymentSuccess(selectedProduct.credits)
         }
@@ -143,15 +126,12 @@ export default function PassPurchaseModal({
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                    {university || '대학 맞춤'}
+                    전 대학 공용
                   </span>
                   <h3 className="text-lg font-bold text-white tracking-tight">
-                    논술패스 프리미엄 훈련권
+                    논술패스 패스 크래딧 충전
                   </h3>
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  15개 전 시험 세트(기출+모의+예상) 및 1:1 AI 다차원 정밀 첨삭
-                </p>
               </div>
             </div>
             <button
@@ -182,12 +162,12 @@ export default function PassPurchaseModal({
             </div>
           )}
 
-          {/* 1. 상품 선택 카드 그리드 */}
+          {/* 1. 패스 크래딧 패키지 선택 카드 그리드 (2x2) */}
           <div>
             <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-3">
-              이용권 선택
+              패스 크래딧 패키지 선택
             </label>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {products.map((prod) => {
                 const isSelected = selectedProduct.id === prod.id
                 return (
@@ -200,25 +180,16 @@ export default function PassPurchaseModal({
                         : 'bg-slate-800/50 border-slate-700/60 hover:bg-slate-800 hover:border-slate-600'
                     }`}
                   >
-                    {prod.badge && (
-                      <span className="absolute -top-2.5 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-sm">
-                        {prod.badge}
-                      </span>
-                    )}
-
                     <div>
-                      <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-bold text-slate-100">{prod.name}</span>
                         {isSelected && <Check className="w-4 h-4 text-blue-400" />}
                       </div>
-                      <p className="text-[11px] text-slate-400 line-clamp-2 mb-3">
-                        {prod.description}
-                      </p>
                     </div>
 
                     <div className="pt-2 border-t border-slate-700/40">
                       <div className="flex items-baseline gap-1">
-                        <span className="text-lg font-extrabold text-white">
+                        <span className="text-lg font-semibold tabular-nums tracking-tight text-slate-50">
                           {prod.price.toLocaleString()}원
                         </span>
                         <span className="text-[11px] text-slate-400 font-normal">
@@ -232,23 +203,7 @@ export default function PassPurchaseModal({
             </div>
           </div>
 
-          {/* 2. 선택된 상품 포함 혜택 상세 */}
-          <div className="p-4 bg-slate-800/40 border border-slate-700/50 rounded-xl space-y-2.5">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-blue-300">
-              <Zap className="w-4 h-4 text-blue-400" />
-              <span>{selectedProduct.name} 제공 혜택</span>
-            </div>
-            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {selectedProduct.features.map((feat, idx) => (
-                <li key={idx} className="flex items-center gap-2 text-xs text-slate-300">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
-                  <span>{feat}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* 3. 결제 수단 선택 */}
+          {/* 2. 결제 수단 선택 */}
           <div>
             <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-2.5">
               결제 수단

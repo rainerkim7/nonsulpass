@@ -10,6 +10,16 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
 import type { UserPass, CreditDeductionResult, PassType } from '@/types/payment'
 
+export const GLOBAL_CREDIT_UNIV = 'ALL'
+
+// 패스 크래딧 패키지 가격 및 횟수 매핑 테이블
+export const CREDIT_PACKAGE_MAP: Record<string, { credits: number; amount: number; productType: string }> = {
+  credit_10: { credits: 10, amount: 3300, productType: 'CREDIT_10' },
+  credit_30: { credits: 30, amount: 9900, productType: 'CREDIT_30' },
+  credit_60: { credits: 60, amount: 19800, productType: 'CREDIT_60' },
+  credit_90: { credits: 90, amount: 29700, productType: 'CREDIT_90' },
+}
+
 export function useUserPass(university?: string) {
   const { user } = useAuth()
   const [userPass, setUserPass] = useState<UserPass | null>(null)
@@ -17,9 +27,9 @@ export function useUserPass(university?: string) {
   const [isLoading, setIsLoading] = useState<boolean>(true)
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState<boolean>(false)
 
-  // 현재 대학의 유효한 패스 및 잔여 크레딧 조회
+  // 전 대학 패스 크래딧('ALL') 합산 조회
   const fetchPass = useCallback(async () => {
-    if (!user || !university) {
+    if (!user) {
       setUserPass(null)
       setTotalRemainingCredits(0)
       setIsLoading(false)
@@ -33,17 +43,16 @@ export function useUserPass(university?: string) {
         .from('user_passes')
         .select('*')
         .eq('user_id', user.id)
-        .eq('university', university)
+        .eq('university', GLOBAL_CREDIT_UNIV)
         .eq('is_active', true)
         .gt('expires_at', nowIso)
         .order('expires_at', { ascending: true })
 
       if (error) {
-        console.warn('[useUserPass] 패스 조회 오류:', error.message)
+        console.warn('[useUserPass] 패스 크래딧 조회 오류:', error.message)
         setUserPass(null)
         setTotalRemainingCredits(0)
       } else if (data && data.length > 0) {
-        // 유효한 첫 번째 패스 지정 및 잔여 크레딧 총합 계산
         setUserPass(data[0] as UserPass)
         const total = data.reduce((acc, curr) => acc + (curr.remaining_credits || 0), 0)
         setTotalRemainingCredits(total)
@@ -58,7 +67,7 @@ export function useUserPass(university?: string) {
     } finally {
       setIsLoading(false)
     }
-  }, [user, university])
+  }, [user])
 
   useEffect(() => {
     fetchPass()
@@ -183,13 +192,13 @@ export function useUserPass(university?: string) {
         }
       }
 
-      // 2) 유효 패스 및 잔여 크레딧 실시간 DB 조회
+      // 2) 유효 패스 크래딧('ALL') 및 잔여 횟수 실시간 DB 조회
       const nowIso = new Date().toISOString()
       const { data: passes } = await supabase
         .from('user_passes')
-        .select('id, remaining_credits')
+        .select('id, university, remaining_credits')
         .eq('user_id', user.id)
-        .eq('university', university)
+        .eq('university', GLOBAL_CREDIT_UNIV)
         .eq('is_active', true)
         .gt('expires_at', nowIso)
         .gt('remaining_credits', 0)
@@ -200,7 +209,7 @@ export function useUserPass(university?: string) {
         return {
           success: false,
           code: 'NO_CREDITS',
-          message: '해당 대학의 유효한 이용권이 없거나 잔여 채점 크레딧이 모두 소진되었습니다.',
+          message: '잔여 채점 크레딧이 모두 소진되었습니다. 통합 크레딧을 충전한 후 이용해 주세요.',
           remaining_credits: 0,
         }
       }
@@ -245,12 +254,12 @@ export function useUserPass(university?: string) {
     try {
       const nowIso = new Date().toISOString()
 
-      // 1) 만료일이 가장 임박한 유효 패스 1건 조회
+      // 1) 만료일이 가장 임박한 통합('ALL') 크레딧 1건 조회
       const { data: targetPass, error: passErr } = await supabase
         .from('user_passes')
         .select('id, remaining_credits')
         .eq('user_id', user.id)
-        .eq('university', university)
+        .eq('university', GLOBAL_CREDIT_UNIV)
         .eq('is_active', true)
         .gt('expires_at', nowIso)
         .gt('remaining_credits', 0)
@@ -262,7 +271,7 @@ export function useUserPass(university?: string) {
         return {
           success: false,
           code: 'NO_CREDITS',
-          message: '해당 대학의 유효한 이용권이 없거나 잔여 채점 크레딧이 모두 소진되었습니다.',
+          message: '잔여 채점 크레딧이 모두 소진되었습니다. 통합 크레딧을 충전해 주세요.',
           remaining_credits: 0,
         }
       }
@@ -333,6 +342,73 @@ export function useUserPass(university?: string) {
   }
 
   /**
+   * 사진 입력(AI 손글씨 OCR 변환) 성공 시 순수 크래딧만 1회 차감하는 함수
+   * - 문항별 채점 응시 횟수(5회 상한) 및 재제출 쿨다운(3분)에는 영향을 주지 않음
+   */
+  const consumeOcrCredit = async (): Promise<CreditDeductionResult> => {
+    if (!user) {
+      return {
+        success: false,
+        code: 'ERROR',
+        message: '로그인이 필요합니다.',
+      }
+    }
+
+    try {
+      const nowIso = new Date().toISOString()
+
+      const { data: targetPass, error: passErr } = await supabase
+        .from('user_passes')
+        .select('id, remaining_credits')
+        .eq('user_id', user.id)
+        .eq('university', GLOBAL_CREDIT_UNIV)
+        .eq('is_active', true)
+        .gt('expires_at', nowIso)
+        .gt('remaining_credits', 0)
+        .order('expires_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+      if (passErr || !targetPass) {
+        return {
+          success: false,
+          code: 'NO_CREDITS',
+          message: '잔여 패스 크래딧이 부족합니다. 크래딧을 충전한 후 이용해 주세요.',
+          remaining_credits: 0,
+        }
+      }
+
+      const nextCredits = Math.max(0, (targetPass.remaining_credits || 1) - 1)
+
+      const { error: updateErr } = await supabase
+        .from('user_passes')
+        .update({
+          remaining_credits: nextCredits,
+          updated_at: nowIso,
+        })
+        .eq('id', targetPass.id)
+
+      if (updateErr) throw updateErr
+
+      await fetchPass()
+
+      return {
+        success: true,
+        code: 'OK',
+        message: '사진 입력(OCR)으로 패스 크래딧 1회가 차감되었습니다.',
+        remaining_credits: nextCredits,
+      }
+    } catch (err: any) {
+      console.error('[useUserPass] OCR 크래딧 차감 실패:', err)
+      return {
+        success: false,
+        code: 'ERROR',
+        message: err.message || '크래딧 차감 중 오류가 발생했습니다.',
+      }
+    }
+  }
+
+  /**
    * 이미 차감된 크레딧 1회 및 시도 횟수를 원상 복구(환불)하는 안전장치 함수
    * - React 클로저의 이전(Stale) userPass 대신 DB의 실시간 행을 직접 조회하여 복구함으로써 +1 초과 증가 버그 원천 차단
    */
@@ -354,7 +430,7 @@ export function useUserPass(university?: string) {
           .from('user_passes')
           .select('id, remaining_credits, total_credits')
           .eq('user_id', user.id)
-          .eq('university', university)
+          .eq('university', GLOBAL_CREDIT_UNIV)
           .eq('is_active', true)
           .gt('expires_at', nowIso)
           .order('updated_at', { ascending: false })
@@ -399,18 +475,21 @@ export function useUserPass(university?: string) {
   }
 
   /**
-   * 결제 완료 또는 모의 결제 성공 시 패스 DB 즉시 충전 및 payment_orders 주문 내역 기록 헬퍼
+   * 결제 완료 또는 모의 결제 성공 시 패스 크래딧('ALL') 또는 패스 DB 즉시 충전 및 payment_orders 주문 내역 기록 헬퍼
    */
   const grantPass = async (passType: PassType, credits?: number, periodDays?: number) => {
-    if (!user || !university) return false
+    if (!user) return false
 
     try {
       const now = new Date()
-      // 관리자 실시간 정책 조회 (인자가 직접 넘어오지 않았거나 standard_30인 경우 관리자 정책 우선)
       const policy = await fetchActiveGradingPolicy()
+      const pkgInfo = CREDIT_PACKAGE_MAP[passType]
+
       const effectiveCredits =
         credits !== undefined && credits > 0
           ? credits
+          : pkgInfo
+          ? pkgInfo.credits
           : passType === 'standard_30'
           ? policy.baseCredits
           : 30
@@ -424,29 +503,44 @@ export function useUserPass(university?: string) {
       const daysToAdd = effectivePeriodDays === 0 ? 3650 : effectivePeriodDays
       const expiresAt = new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000).toISOString()
 
+      // 패스 크래딧 패키지(credit_10/30/60/90)는 전 대학 공용('ALL')으로 발급
+      const targetUniversity = pkgInfo ? GLOBAL_CREDIT_UNIV : university || GLOBAL_CREDIT_UNIV
+
       const { error } = await supabase.from('user_passes').insert({
         user_id: user.id,
-        university,
+        university: targetUniversity,
         total_credits: effectiveCredits,
         remaining_credits: effectiveCredits,
         pass_type: passType,
         starts_at: now.toISOString(),
         expires_at: expiresAt,
-        is_active: true
+        is_active: true,
       })
 
       if (error) throw error
 
-      // 결제 주문 내역(payment_orders) 동시 기록 (실패 시 무시하여 패스 부여 보장)
-      const amount = passType === 'standard_30' ? 19800 : passType === 'addon_10' ? 8900 : 4900
-      const productType = passType === 'standard_30' ? 'PASS_30' : passType === 'addon_10' ? 'ADDON_10' : 'ADDON_5'
+      // 결제 주문 내역(payment_orders) 동시 기록 (실패 시 무시하여 크래딧 부여 보장)
+      const amount = pkgInfo
+        ? pkgInfo.amount
+        : passType === 'standard_30'
+        ? 19800
+        : passType === 'addon_10'
+        ? 8900
+        : 4900
+      const productType = pkgInfo
+        ? pkgInfo.productType
+        : passType === 'standard_30'
+        ? 'PASS_30'
+        : passType === 'addon_10'
+        ? 'ADDON_10'
+        : 'ADDON_5'
       const orderId = `ORD-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
       try {
         await supabase.from('payment_orders').insert({
           order_id: orderId,
           user_id: user.id,
           product_type: productType,
-          university,
+          university: targetUniversity,
           amount,
           status: 'PAID',
           pg_provider: 'tosspayments',
@@ -472,6 +566,7 @@ export function useUserPass(university?: string) {
     refetchPass: fetchPass,
     checkCreditEligibility,
     consumeCredit,
+    consumeOcrCredit,
     refundCredit,
     grantPass,
     isPurchaseModalOpen,
@@ -502,6 +597,7 @@ export function useAllUserPasses() {
         .from('user_passes')
         .select('*')
         .eq('user_id', user.id)
+        .eq('university', GLOBAL_CREDIT_UNIV)
         .eq('is_active', true)
         .gt('expires_at', nowIso)
         .order('expires_at', { ascending: true })
@@ -704,12 +800,96 @@ export function useAllUserPasses() {
     }
   }
 
+  /**
+   * 전 대학 공용 패스 크래딧('ALL') 패키지 결제 및 DB 발급 함수
+   */
+  const purchaseGlobalCredits = async (
+    passType: PassType,
+    credits?: number,
+    periodDays?: number
+  ): Promise<boolean> => {
+    if (!user) return false
+
+    try {
+      const now = new Date()
+      let policyPeriodDays = 365
+      try {
+        const { data } = await supabase
+          .from('universities')
+          .select('char_per_question')
+          .eq('id', '__grading_policy__')
+          .maybeSingle()
+        if (data?.char_per_question) {
+          const parsed = JSON.parse(data.char_per_question)
+          if (typeof parsed.periodDays === 'number') policyPeriodDays = parsed.periodDays
+        }
+      } catch {
+        // 기본값 사용
+      }
+
+      const pkgInfo = CREDIT_PACKAGE_MAP[passType]
+      const effectiveCredits = credits && credits > 0 ? credits : pkgInfo?.credits ?? 10
+      const effectiveAmount = pkgInfo?.amount ?? effectiveCredits * 330
+      const effectiveProductType = pkgInfo?.productType ?? 'CREDIT_10'
+
+      const effectivePeriodDays =
+        periodDays !== undefined && periodDays >= 0 ? periodDays : policyPeriodDays
+      const daysToAdd = effectivePeriodDays === 0 ? 3650 : effectivePeriodDays
+      const expiresAt = new Date(now.getTime() + daysToAdd * 24 * 60 * 60 * 1000).toISOString()
+
+      const { error } = await supabase.from('user_passes').insert({
+        user_id: user.id,
+        university: GLOBAL_CREDIT_UNIV,
+        total_credits: effectiveCredits,
+        remaining_credits: effectiveCredits,
+        pass_type: passType,
+        starts_at: now.toISOString(),
+        expires_at: expiresAt,
+        is_active: true,
+      })
+
+      if (error) throw error
+
+      try {
+        const datePrefix = now.toISOString().slice(0, 10).replace(/-/g, '')
+        await supabase.from('payment_orders').insert({
+          order_id: `ORD-${datePrefix}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
+          user_id: user.id,
+          product_type: effectiveProductType,
+          university: GLOBAL_CREDIT_UNIV,
+          amount: effectiveAmount,
+          status: 'PAID',
+          pg_provider: 'tosspayments',
+          paid_at: now.toISOString(),
+        })
+      } catch (orderErr) {
+        console.warn('[useAllUserPasses] payment_orders 기록 생략:', orderErr)
+      }
+
+      await fetchAllPasses()
+      return true
+    } catch (err) {
+      console.error('[useAllUserPasses] 패스 크래딧 충전 실패:', err)
+      return false
+    }
+  }
+
+  // 통합 공용 크래딧('ALL') 합산 및 전체(기존 대학 전용 + 통합) 합산
+  const globalRemainingCredits = allPasses
+    .filter((p) => p.university === GLOBAL_CREDIT_UNIV)
+    .reduce((acc, p) => acc + (p.remaining_credits || 0), 0)
+
+  const totalAllCredits = allPasses.reduce((acc, p) => acc + (p.remaining_credits || 0), 0)
+
   return {
     allPasses,
+    globalRemainingCredits,
+    totalAllCredits,
     isLoading,
     refetchAllPasses: fetchAllPasses,
     grantMultiplePasses,
-    purchasePassesAndAddons
+    purchasePassesAndAddons,
+    purchaseGlobalCredits,
   }
 }
 

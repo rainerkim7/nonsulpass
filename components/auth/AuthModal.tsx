@@ -1,9 +1,9 @@
 'use client'
 
 import React, { useState } from 'react'
-import { X, Lock, Mail, User, GraduationCap, ArrowRight, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { X, Lock, Mail, User, MapPin, ArrowRight, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
-import { SEOUL_UNIVERSITIES } from '@/lib/constants/universities'
+import { HIGH_SCHOOL_REGIONS } from '@/lib/constants/regions'
 
 export default function AuthModal() {
   const { isAuthModalOpen, authModalMode, closeAuthModal, openAuthModal, login, signup } = useAuth()
@@ -12,7 +12,7 @@ export default function AuthModal() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [name, setName] = useState('')
-  const [targetUniv, setTargetUniv] = useState('홍익대학교')
+  const [highSchoolRegion, setHighSchoolRegion] = useState<string>('서울특별시')
 
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -52,7 +52,7 @@ export default function AuthModal() {
 
     try {
       if (isSignup) {
-        const res = await signup(email, password, name, targetUniv)
+        const res = await signup(email, password, name, highSchoolRegion)
         if (res.error) {
           if (res.error.includes('already registered')) {
             setErrorMessage('이미 가입된 이메일 주소입니다. 로그인해 주세요.')
@@ -292,13 +292,13 @@ export default function AuthModal() {
 
               <div>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
-                  목표 지망 대학
+                  고등학교 소재 지역
                 </label>
                 <div style={{ position: 'relative' }}>
-                  <GraduationCap size={15} style={{ position: 'absolute', left: '12px', top: '12px', color: '#94a3b8' }} />
+                  <MapPin size={15} style={{ position: 'absolute', left: '12px', top: '12px', color: '#94a3b8' }} />
                   <select
-                    value={targetUniv}
-                    onChange={(e) => setTargetUniv(e.target.value)}
+                    value={highSchoolRegion}
+                    onChange={(e) => setHighSchoolRegion(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '9px 12px 9px 36px',
@@ -311,9 +311,9 @@ export default function AuthModal() {
                       cursor: 'pointer',
                     }}
                   >
-                    {SEOUL_UNIVERSITIES.map((u) => (
-                      <option key={u.id} value={u.name}>
-                        {u.name}
+                    {HIGH_SCHOOL_REGIONS.map((region) => (
+                      <option key={region} value={region}>
+                        {region}
                       </option>
                     ))}
                   </select>

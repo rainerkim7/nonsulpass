@@ -33,11 +33,12 @@ export interface GeminiCallResult {
 
 /**
  * 논술패스 Lab 유료 등급(Pay-as-you-go) 고성능 Gemini 모델 라인업
- * - Gemini 3.1 Pro, Gemini 4 Argon, Gemini 3.8 Flash
+ * - Gemini 3.1 Pro, Gemini 4 Argon, Gemini 4 Hydrogen, Gemini 3.8 Flash
  */
 export const PAID_PRO_GEMINI_MODELS = [
   'gemini-3.1-pro-preview',
   'gemini-4-argon',
+  'gemini-4-hydrogen',
   'gemini-3.8-flash',
 ]
 
@@ -46,6 +47,7 @@ export const PAID_PRO_GEMINI_MODELS = [
  */
 export const DEFAULT_GEMINI_MODELS = [
   'gemini-3.8-flash',
+  'gemini-4-hydrogen',
   'gemini-3.1-pro-preview',
   'gemini-4-argon',
 ]

@@ -42,6 +42,10 @@ interface HandwritingOcrModalProps {
   currentAnswer: string
   questionLabel?: string
   charLimit?: string
+  remainingCredits?: number
+  isAdmin?: boolean
+  onConsumeOcrCredit?: () => Promise<{ success: boolean; message?: string }>
+  onOpenPurchaseModal?: () => void
 }
 
 /**
@@ -102,7 +106,11 @@ export default function HandwritingOcrModal({
   onApplyText,
   currentAnswer,
   questionLabel = '문제 1',
-  charLimit = '800±100자'
+  charLimit = '800±100자',
+  remainingCredits,
+  isAdmin = false,
+  onConsumeOcrCredit,
+  onOpenPurchaseModal,
 }: HandwritingOcrModalProps) {
   // 업로드된 이미지 리스트
   const [images, setImages] = useState<UploadedImageItem[]>([])
@@ -234,6 +242,15 @@ export default function HandwritingOcrModal({
       return
     }
 
+    // 일반 학생은 잔여 크래딧 1회 이상 필요 (실패 시에는 차감하지 않음)
+    if (!isAdmin && remainingCredits !== undefined && remainingCredits <= 0) {
+      setErrorMsg('잔여 패스 크래딧이 부족합니다. 크래딧을 충전한 후 이용해 주세요.')
+      if (onOpenPurchaseModal) {
+        onOpenPurchaseModal()
+      }
+      return
+    }
+
     setIsProcessing(true)
     setErrorMsg(null)
     setProcessingStatus(`Gemini Vision AI가 ${images.length}장의 원고지 사진을 순서대로 분석 중입니다...`)
@@ -259,6 +276,14 @@ export default function HandwritingOcrModal({
 
       if (!res.ok || !data.success) {
         throw new Error(data.error || '사진 판독 중 오류가 발생했습니다.')
+      }
+
+      // AI 손글씨 텍스트 변환이 정상 완료된 시점에만 크래딧 1회 차감 (실패 시 차감 없음)
+      if (!isAdmin && onConsumeOcrCredit) {
+        const deductRes = await onConsumeOcrCredit()
+        if (!deductRes.success) {
+          throw new Error(deductRes.message || '크래딧 차감 중 오류가 발생했습니다.')
+        }
       }
 
       setExtractedText(data.text || '')
@@ -893,6 +918,18 @@ export default function HandwritingOcrModal({
             backgroundColor: '#f8fafc'
           }}
         >
+          {!isAdmin && step === 'upload' && remainingCredits !== undefined && (
+            <span
+              style={{
+                marginRight: 'auto',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: remainingCredits > 0 ? '#4338ca' : '#dc2626',
+              }}
+            >
+              * 변환 성공 시 패스 크래딧 1회 차감 (잔여: {remainingCredits}회 · 실패 시 미차감)
+            </span>
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -940,7 +977,9 @@ export default function HandwritingOcrModal({
               ) : (
                 <>
                   <Sparkles size={16} />
-                  <span>Gemini AI로 텍스트 변환 ({images.length}장)</span>
+                  <span>
+                    Gemini AI로 텍스트 변환 ({images.length}장{!isAdmin ? ' · 1크래딧' : ''})
+                  </span>
                 </>
               )}
             </button>

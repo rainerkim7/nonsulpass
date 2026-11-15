@@ -5,7 +5,7 @@
  * @description Gemini AI 논술 정밀 채점 리포트 화면 컴포넌트
  */
 
-import React, { useState } from 'react'
+import React from 'react'
 import {
   FileText,
   Check,
@@ -50,8 +50,6 @@ export default function ReportPage({
   reportData,
   onHome,
 }: ReportPageProps) {
-  const [activeCriterion, setActiveCriterion] = useState(0)
-
   // 채점 데이터 매핑 (API 응답이 있으면 실제 데이터, 없으면 안내 기본값 사용)
   const isRealGrading = !!reportData
 
@@ -90,8 +88,6 @@ export default function ReportPage({
         feedback: c.feedback,
         warning: c.title.includes('종합 설명') ? '양비론/절충론 감점 적용 (-10점)' : undefined,
       }))
-
-  const activeItem = criteriaList[activeCriterion] || criteriaList[0]
 
   const examinerVerdict = reportData?.examinerVerdict || {
     oneLiner: '“제시문을 성실히 읽고 자신의 견해로 확장했으나, 핵심 쟁점의 대립을 끝까지 밀어붙이는 힘이 아쉽습니다.”',
@@ -207,37 +203,28 @@ export default function ReportPage({
               </div>
               <span className="muted-label">총 {totalScore} / {maxScore}점</span>
             </div>
-            <div className="rubric-tabs">
+            {/* 모든 평가 기준 항목 및 상세 평가 내용을 한눈에 볼 수 있도록 전체 펼쳐서 표시 */}
+            <div className="rubric-list">
               {criteriaList.map((criterion, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  className={activeCriterion === index ? 'active' : ''}
-                  onClick={() => setActiveCriterion(index)}
-                >
-                  <span>0{index + 1}</span>
-                  {criterion.category}
-                  <strong>{criterion.score} / {criterion.maxScore}점</strong>
-                </button>
+                <div key={index} className="rubric-item-card">
+                  <div className="rubric-item-header">
+                    <span className="rubric-item-num">0{index + 1}</span>
+                    <h3 className="rubric-item-title">{criterion.category}</h3>
+                    <strong className="rubric-item-score">
+                      {criterion.score} / {criterion.maxScore}점
+                    </strong>
+                  </div>
+                  <div className="rubric-item-body">
+                    <p>{criterion.feedback}</p>
+                    {criterion.warning && (
+                      <div className="warning-chip">
+                        <AlertTriangle /> {criterion.warning}
+                      </div>
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
-            {activeItem && (
-              <div className="rubric-detail">
-                <div className="detail-score">
-                  <strong>{activeItem.score}</strong>
-                  <span>/ {activeItem.maxScore}점</span>
-                </div>
-                <div>
-                  <h3>{activeItem.category}</h3>
-                  <p>{activeItem.feedback}</p>
-                  {activeItem.warning && (
-                    <div className="warning-chip">
-                      <AlertTriangle /> {activeItem.warning}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </section>
 
           <section className="report-card verdict-card">

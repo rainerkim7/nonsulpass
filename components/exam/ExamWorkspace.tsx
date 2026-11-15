@@ -72,6 +72,7 @@ export default function ExamWorkspace({
     remainingCredits,
     checkCreditEligibility,
     consumeCredit,
+    consumeOcrCredit,
     grantPass,
     isPurchaseModalOpen,
     openPurchaseModal,
@@ -1636,7 +1637,14 @@ export default function ExamWorkspace({
               {/* 📷 사진 입력 버튼 */}
               <button
                 type="button"
-                onClick={() => setShowOcrModal(true)}
+                onClick={() => {
+                  if (!isAdmin && remainingCredits <= 0) {
+                    alert('사진 입력(AI 손글씨 변환)을 이용하려면 패스 크래딧이 1회 이상 필요합니다. 크래딧 충전 페이지로 이동합니다.')
+                    openPurchaseModal()
+                    return
+                  }
+                  setShowOcrModal(true)
+                }}
                 className="editor-btn-secondary"
                 title="실제 원고지나 노트에 손글씨로 작성한 글을 폰 카메라로 찍어 올리면 Gemini AI가 텍스트로 자동 변환합니다"
                 style={{
@@ -1830,6 +1838,13 @@ export default function ExamWorkspace({
         currentAnswer={currentAnswer}
         questionLabel={currentQ.label || '문항 1'}
         charLimit={currentQ.limit || '800±100자'}
+        remainingCredits={remainingCredits}
+        isAdmin={isAdmin}
+        onConsumeOcrCredit={consumeOcrCredit}
+        onOpenPurchaseModal={() => {
+          setShowOcrModal(false)
+          openPurchaseModal()
+        }}
       />
 
       {/* AI 채점 진행 오버레이 모달 */}

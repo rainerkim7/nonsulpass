@@ -79,11 +79,16 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   name TEXT NOT NULL DEFAULT '수험생',
-  target_university TEXT DEFAULT '홍익대학교',
+  high_school_region TEXT DEFAULT '서울특별시',
+  target_university TEXT DEFAULT '미정',
   role TEXT NOT NULL DEFAULT 'user', -- 'admin' | 'user'
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- 기존 테이블에 고등학교 소재 지역 컬럼 추가 (마이그레이션 안전성 보장)
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS high_school_region TEXT DEFAULT '서울특별시';
 
 -- 7. 학생 답안 제출 및 AI 정밀 채점 리포트 보관 테이블 (student_submissions)
 CREATE TABLE IF NOT EXISTS public.student_submissions (

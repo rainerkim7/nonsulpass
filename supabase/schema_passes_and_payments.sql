@@ -109,12 +109,12 @@ BEGIN
     END IF;
   END IF;
 
-  -- 2) 유효한 패스 조회 및 행 잠금(FOR UPDATE)으로 동시성 보장
+  -- 2) 유효한 패스 크래딧('ALL') 조회 및 행 잠금(FOR UPDATE)으로 동시성 보장
   SELECT id, remaining_credits
     INTO v_pass_id, v_remaining_credits
     FROM public.user_passes
    WHERE user_id = p_user_id
-     AND university = p_university
+     AND university = 'ALL'
      AND is_active = true
      AND expires_at > now()
      AND remaining_credits > 0
@@ -177,12 +177,12 @@ DECLARE
   v_pass_id UUID;
   v_remaining_credits INT;
 BEGIN
-  -- 1) 가장 최근에 차감된 유효 패스 1건 조회 후 크레딧 +1 복원
+  -- 1) 가장 최근에 차감된 유효 패스 크래딧('ALL') 1건 조회 후 크레딧 +1 복원
   SELECT id, remaining_credits
     INTO v_pass_id, v_remaining_credits
     FROM public.user_passes
    WHERE user_id = p_user_id
-     AND university = p_university
+     AND university = 'ALL'
      AND is_active = true
      AND expires_at > now()
      AND remaining_credits < total_credits

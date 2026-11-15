@@ -19,6 +19,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import Brand from '@/components/common/Brand'
+import SiteHeader from '@/components/common/SiteHeader'
 
 // 로컬 스토리지 임시 저장 키
 const DRAFT_STORAGE_KEY = 'nonsulpass_writing_basic_draft'
@@ -84,19 +85,7 @@ export default function WritingBasicPage() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
       {/* 상단 글로벌 헤더 */}
-      <header className="home-topbar">
-        <Brand onHome={() => router.push('/')} />
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => router.push('/')}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs transition cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            메인 화면으로 돌아가기
-          </button>
-        </div>
-      </header>
+      <SiteHeader />
 
       {/* 상단 타이틀 배너 섹션 */}
       <section className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white py-10 px-6 border-b border-slate-800">
