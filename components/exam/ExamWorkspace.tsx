@@ -1299,14 +1299,14 @@ export default function ExamWorkspace({
                     padding: '4px 10px',
                     backgroundColor: isEditMode
                       ? (currentPdfUrl ? '#eff6ff' : '#fff7ed')
-                      : (currentPdfUrl ? '#fff1f2' : '#f8fafc'),
+                      : (currentPdfUrl ? '#ffffff' : '#f8fafc'),
                     color: isEditMode
                       ? (currentPdfUrl ? '#2563eb' : '#ea580c')
-                      : (currentPdfUrl ? '#e11d48' : '#64748b'),
+                      : (currentPdfUrl ? '#334155' : '#64748b'),
                     border: `1.5px solid ${
                       isEditMode
                         ? (currentPdfUrl ? '#93c5fd' : '#fdba74')
-                        : (currentPdfUrl ? '#fecdd3' : '#e2e8f0')
+                        : (currentPdfUrl ? '#93c5fd' : '#e2e8f0')
                     }`,
                     borderRadius: '8px',
                     fontSize: '12.5px',

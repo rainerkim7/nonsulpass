@@ -43,10 +43,11 @@ interface AllInOneParserProps {
   showNotice: (type: 'success' | 'error', message: string) => void
 }
 
-// 관리자 전용 정예 5대 AI 모델 옵션 목록 (Gemini 3종 + OpenAI 2종)
+// 관리자 전용 정예 6대 AI 모델 옵션 목록 (Gemini 4종 + OpenAI 2종)
 const AVAILABLE_GEMINI_PARSER_MODELS = [
   { id: 'gemini-3.1-pro-preview', name: '🌟 Gemini 3.1 Pro (정밀 논리평가/수리 추천)' },
   { id: 'gemini-4-argon', name: '🚀 Gemini 4 Argon (차세대 플래그십 심층추론)' },
+  { id: 'gemini-4-hydrogen', name: '⚡ Gemini 4 Hydrogen (초고속 에이전트 & 지시 이행 특화)' },
   { id: 'gemini-3.8-flash', name: '⚡ Gemini 3.8 Flash (초고속 응답 & 균일 채점)' },
   { id: 'gpt-6.1-sol', name: '☀️ ChatGPT 6.1 Sol (OpenAI 초정밀 추론)' },
   { id: 'gpt-6.1-terra', name: '🌍 ChatGPT 6.1 Terra (OpenAI 심층 분석)' },
