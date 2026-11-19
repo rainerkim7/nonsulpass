@@ -48,11 +48,13 @@ export async function POST(req: NextRequest) {
     const storageFileName = `exam_${Date.now()}_${asciiBase || Math.random().toString(36).slice(2, 8)}${ext}`
     const storagePath = `pdf/${safeUnivFolder}/${storageFileName}`
 
+    // upsert: false 적용 — 파일명에 타임스탬프가 포함되어 고유하므로 덮어쓰기가 불필요하며,
+    // Supabase Storage에서 upsert: true 시 SELECT RLS 정책까지 요구해 업로드가 차단되는 문제를 방지합니다.
     const { error: storageErr } = await supabase.storage
       .from(BUCKET_NAME)
       .upload(storagePath, buffer, {
         contentType: 'application/pdf',
-        upsert: true,
+        upsert: false,
       })
 
     if (!storageErr) {
@@ -72,31 +74,41 @@ export async function POST(req: NextRequest) {
       }
     } else {
       console.warn(
-        `[upload-exam-pdf] Supabase Storage 업로드 폴백 (${storageErr.message}) -> 로컬 디스크 저장 시도`
+        `[upload-exam-pdf] Supabase Storage 업로드 실패 (${storageErr.message}) -> 로컬 디스크 폴백 시도`
       )
     }
 
     // 2. 로컬 개발 환경 스마트 폴백 (버킷 미생성 시 public/exams/pdf/[univId]/ 에 저장)
-    const uploadDir = path.join(process.cwd(), 'public', 'exams', 'pdf', safeUnivFolder)
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true })
+    //    * Vercel 등 읽기 전용 파일시스템(EROFS)에서 폴백이 실패하면 실제 Supabase Storage 오류 원인을 반환합니다.
+    try {
+      const uploadDir = path.join(process.cwd(), 'public', 'exams', 'pdf', safeUnivFolder)
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true })
+      }
+
+      const sanitizedBase = path.basename(fileName, ext).replace(/[^a-zA-Z0-9_\-\uAC00-\uD7A3]/g, '_')
+      const finalFileName = `exam_${Date.now()}_${sanitizedBase}${ext}`
+      const filePath = path.join(uploadDir, finalFileName)
+
+      fs.writeFileSync(filePath, buffer)
+      const publicUrl = `/exams/pdf/${safeUnivFolder}/${finalFileName}`
+
+      return NextResponse.json({
+        success: true,
+        storage: 'local',
+        url: publicUrl,
+        fileName: finalFileName,
+        originalName: fileName,
+        size: file.size,
+      })
+    } catch (fsErr: any) {
+      const reason = storageErr?.message || fsErr?.message || '스토리지 및 디스크 저장 실패'
+      console.error('[upload-exam-pdf] 로컬 디스크 폴백 실패:', fsErr)
+      return NextResponse.json(
+        { error: `PDF 업로드 실패 (Supabase Storage: ${reason})` },
+        { status: 500 }
+      )
     }
-
-    const sanitizedBase = path.basename(fileName, ext).replace(/[^a-zA-Z0-9_\-\uAC00-\uD7A3]/g, '_')
-    const finalFileName = `exam_${Date.now()}_${sanitizedBase}${ext}`
-    const filePath = path.join(uploadDir, finalFileName)
-
-    fs.writeFileSync(filePath, buffer)
-    const publicUrl = `/exams/pdf/${safeUnivFolder}/${finalFileName}`
-
-    return NextResponse.json({
-      success: true,
-      storage: 'local',
-      url: publicUrl,
-      fileName: finalFileName,
-      originalName: fileName,
-      size: file.size,
-    })
   } catch (error: any) {
     console.error('[upload-exam-pdf] PDF 업로드 처리 중 오류:', error)
     return NextResponse.json(

@@ -1182,7 +1182,7 @@ export default function ExamWorkspace({
               title="클릭하여 이용권 확인 및 채점권 추가 충전"
             >
               <Coins size={14} className={remainingCredits > 0 ? 'text-blue-400' : 'text-amber-400'} />
-              <span>{currentUniv} 크레딧: <strong>{remainingCredits}회</strong></span>
+              <span>패스 크레딧: <strong>{remainingCredits}회</strong></span>
             </button>
           ) : (
             <button
@@ -1427,16 +1427,20 @@ export default function ExamWorkspace({
           />
 
           <div className="reading-scroll">
-            {/* 관리자 알림 토스트 배너 */}
+            {/* 관리자 알림 토스트 배너 (하단 제시문 편집 중에도 업로드 성공/실패를 즉시 확인할 수 있도록 상단 고정) */}
             {adminNotice && (
               <div
                 style={{
+                  position: 'sticky',
+                  top: '8px',
+                  zIndex: 20,
                   margin: '0 0 14px 0',
                   padding: '10px 14px',
                   borderRadius: '8px',
                   backgroundColor: adminNotice.type === 'success' ? '#f0fdf4' : '#fef2f2',
                   border: `1px solid ${adminNotice.type === 'success' ? '#86efac' : '#fecaca'}`,
                   color: adminNotice.type === 'success' ? '#15803d' : '#b91c1c',
+                  boxShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
                   fontSize: '12.5px',
                   fontWeight: 600,
                   display: 'flex',
