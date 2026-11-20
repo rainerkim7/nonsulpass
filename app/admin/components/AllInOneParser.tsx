@@ -67,6 +67,7 @@ export default function AllInOneParser({
 }: AllInOneParserProps) {
   // ⚡ 올인원 통합 문서 자동 분해 엔진 상태
   const [allInOneDocText, setAllInOneDocText] = useState<string>('')
+  const [customInstruction, setCustomInstruction] = useState<string>('')
   const [allInOneInputMode, setAllInOneInputMode] = useState<'file' | 'text'>('file')
   const [selectedTabsToGenerate, setSelectedTabsToGenerate] = useState<{
     tab1: boolean
@@ -379,9 +380,11 @@ export default function AllInOneParser({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          univId: selectedUniv,
           univName,
           targetFaculty: activeFaculty,
           documentText: allInOneDocText,
+          customInstruction: customInstruction.trim(),
           selectedTabs: selectedTabsToGenerate,
           model: selectedGeminiModel,
         })
@@ -1047,6 +1050,96 @@ export default function AllInOneParser({
               style={{ fontSize: '12.5px', lineHeight: '1.55', resize: 'vertical' }}
             />
           )}
+
+          {/* 💬 AI 추가 지시사항 (선택 입력 — 특정 계열 제외, 회차 선별 등 최우선 지침 전달) */}
+          <div
+            style={{
+              marginTop: '12px',
+              padding: '12px 14px',
+              background: '#ffffff',
+              borderRadius: '8px',
+              border: '1px solid #bfdbfe',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Sparkles size={14} className="text-blue-600" />
+                <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#1e3a8a' }}>
+                  AI 추가 지시사항 (선택 입력)
+                </span>
+                <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                  — 분해·생성 시 AI에게 최우선으로 반영할 조건을 입력하세요
+                </span>
+              </div>
+              {customInstruction.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setCustomInstruction('')}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#94a3b8',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    padding: '2px 6px',
+                  }}
+                >
+                  지우기 ✕
+                </button>
+              )}
+            </div>
+
+            <textarea
+              value={customInstruction}
+              onChange={(e) => setCustomInstruction(e.target.value)}
+              placeholder='예: "첨부된 문제에서 자연계열 문제는 제외하고 인문계열 문항만 추출해 줘." / "1회차(오전) 문제만 추출해 줘."'
+              className="admin-input"
+              rows={2}
+              style={{
+                fontSize: '12.5px',
+                lineHeight: '1.5',
+                resize: 'vertical',
+                background: '#f8fafc',
+              }}
+            />
+
+            {/* 자주 쓰는 지시사항 원클릭 칩 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b' }}>빠른 추가:</span>
+              {[
+                '첨부된 문서에서 자연계열 문제는 제외하고 인문·사회계열 문제만 추출해 줘.',
+                '오전(1회차) 기출 문항만 추출하고 오후(2회차)는 제외해 줘.',
+                '오후(2회차) 기출 문항만 추출하고 오전(1회차)는 제외해 줘.',
+                '모의논술은 제외하고 본고사(기출문제)만 추출해 줘.',
+              ].map((presetText, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() =>
+                    setCustomInstruction((prev) =>
+                      prev.trim() ? `${prev.trim()}\n${presetText}` : presetText
+                    )
+                  }
+                  style={{
+                    padding: '3px 9px',
+                    borderRadius: '9999px',
+                    border: '1px solid #cbd5e1',
+                    background: '#f8fafc',
+                    color: '#334155',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  + {presetText.length > 26 ? `${presetText.slice(0, 26)}...` : presetText}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 

@@ -78,9 +78,9 @@ export default function ReportPage({
   const conceptHits = reportData?.conceptHits || { matchedCount: 0, targetTotal: 0, keywords: [] }
   const structureGrade = reportData?.structureGrade || '-'
 
-  // 평가 기준 목록
-  const criteriaList = reportData?.criteria && reportData.criteria.length > 0
-    ? reportData.criteria
+  // 평가 기준 목록 (실제 채점 결과에서는 하드코딩 시뮬레이션 더미 데이터가 노출되지 않도록 분리)
+  const criteriaList = isRealGrading
+    ? (Array.isArray(reportData?.criteria) ? reportData.criteria : [])
     : DEFAULT_CRITERIA.map((c) => ({
         category: c.title,
         score: parseInt(c.score.split(' / ')[0]),
@@ -89,13 +89,20 @@ export default function ReportPage({
         warning: c.title.includes('종합 설명') ? '양비론/절충론 감점 적용 (-10점)' : undefined,
       }))
 
-  const examinerVerdict = reportData?.examinerVerdict || {
-    oneLiner: '“제시문을 성실히 읽고 자신의 견해로 확장했으나, 핵심 쟁점의 대립을 끝까지 밀어붙이는 힘이 아쉽습니다.”',
-    coreAdvice: '대립하는 관점을 서둘러 화해시키기보다, 차이가 발생하는 기준을 먼저 세우고 그 기준으로 자신의 입장을 증명해 보세요.',
-  }
+  // 출제위원 총평 (실제 채점 시 누락되더라도 무관한 샘플 문구 대신 중립 안내 사용)
+  const examinerVerdict = isRealGrading
+    ? (reportData?.examinerVerdict || {
+        oneLiner: '“제출된 답안에 대한 AI 정밀 채점이 완료되었습니다.”',
+        coreAdvice: '위 평가 기준별 상세 분석을 바탕으로 논리 전개와 핵심 개념어 활용을 점검해 보세요.',
+      })
+    : {
+        oneLiner: '“제시문을 성실히 읽고 자신의 견해로 확장했으나, 핵심 쟁점의 대립을 끝까지 밀어붙이는 힘이 아쉽습니다.”',
+        coreAdvice: '대립하는 관점을 서둘러 화해시키기보다, 차이가 발생하는 기준을 먼저 세우고 그 기준으로 자신의 입장을 증명해 보세요.',
+      }
 
-  const deductions = reportData?.deductions && reportData.deductions.length > 0
-    ? reportData.deductions
+  // 감점 및 지도 조언 (실제 채점에서 감점이 0건이면 더미 데이터를 넣지 않고 빈 배열 유지)
+  const deductions = isRealGrading
+    ? (Array.isArray(reportData?.deductions) ? reportData.deductions : [])
     : [
         {
           location: '논증 · 문단 2',
@@ -111,11 +118,16 @@ export default function ReportPage({
         },
       ]
 
-  const rewrite = reportData?.rewrite || {
-    beforeText: '두 제시문은 기술과 선택을 바라보는 출발점에서 차이를 보이지만, 인간의 주체적 판단이 중요하다는 점에서는 만난다.',
-    flawReason: '공통점으로 빠르게 수렴해 ‘무엇이 어떻게 다른가’가 드러나지 않습니다.',
-    afterText: '반면 (가)는 기술이 판단을 대신할 때 자유가 약화된다고 경고하고, (나)는 선택의 기회를 넓혀야 공동체가 진보한다고 주장한다. 두 입장은 판단의 주체를 개인에게 둔다는 점은 같지만, 자유를 제한할 것인지 확장할 것인지에서 충돌한다.',
-  }
+  // 1:1 문단 첨삭 (실제 채점 시 유효한 원문/개선안이 없으면 더미 문구 대신 null 처리하여 섹션 숨김)
+  const rewrite = isRealGrading
+    ? (reportData?.rewrite && (reportData.rewrite.beforeText?.trim() || reportData.rewrite.afterText?.trim())
+        ? reportData.rewrite
+        : null)
+    : {
+        beforeText: '두 제시문은 기술과 선택을 바라보는 출발점에서 차이를 보이지만, 인간의 주체적 판단이 중요하다는 점에서는 만난다.',
+        flawReason: '공통점으로 빠르게 수렴해 ‘무엇이 어떻게 다른가’가 드러나지 않습니다.',
+        afterText: '반면 (가)는 기술이 판단을 대신할 때 자유가 약화된다고 경고하고, (나)는 선택의 기회를 넓혀야 공동체가 진보한다고 주장한다. 두 입장은 판단의 주체를 개인에게 둔다는 점은 같지만, 자유를 제한할 것인지 확장할 것인지에서 충돌한다.',
+      }
 
   return (
     <main className="report-shell">
@@ -252,54 +264,108 @@ export default function ReportPage({
               <p className="eyebrow">CRITICAL DEDUCTIONS & COACHING</p>
               <h2>치명적 감점 및 지도 조언</h2>
             </div>
-            <span className="flag-count">주의 {deductions.length}건</span>
+            {deductions.length === 0 ? (
+              <span
+                className="flag-count"
+                style={{
+                  backgroundColor: '#ecfdf5',
+                  color: '#047857',
+                  border: '1px solid #a7f3d0',
+                }}
+              >
+                감점 0건 · 통과
+              </span>
+            ) : (
+              <span className="flag-count">주의 {deductions.length}건</span>
+            )}
           </div>
-          <div className="flag-list">
-            {deductions.map((d, idx) => (
-              <div key={idx} className="flag-item">
-                <div className={`flag-icon ${idx > 0 ? 'soft' : ''}`}><AlertTriangle /></div>
-                <div>
-                  <span className="flag-label">{d.location}</span>
-                  <p>“{d.originalSentence}”</p>
-                  <small>{d.critique}</small>
-                </div>
-                <b>{d.penaltyScore > 0 ? `-${d.penaltyScore}점` : `${d.penaltyScore}점`}</b>
+          {deductions.length === 0 ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '18px 20px',
+                borderRadius: '12px',
+                backgroundColor: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                color: '#166534',
+              }}
+            >
+              <div
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '9999px',
+                  backgroundColor: '#dcfce7',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Check size={18} />
               </div>
-            ))}
-          </div>
+              <div>
+                <strong style={{ display: 'block', fontSize: '14.5px', marginBottom: '2px' }}>
+                  발견된 치명적 감점 요인이 없습니다.
+                </strong>
+                <span style={{ fontSize: '13px', color: '#15803d' }}>
+                  공식 채점 기준표의 필수 논점과 논리 구성, 규정 분량 요건을 우수하게 충족했습니다.
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="flag-list">
+              {deductions.map((d, idx) => (
+                <div key={idx} className="flag-item">
+                  <div className={`flag-icon ${idx > 0 ? 'soft' : ''}`}><AlertTriangle /></div>
+                  <div>
+                    <span className="flag-label">{d.location}</span>
+                    <p>“{d.originalSentence}”</p>
+                    <small>{d.critique}</small>
+                  </div>
+                  <b>{d.penaltyScore > 0 ? `-${d.penaltyScore}점` : `${d.penaltyScore}점`}</b>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
-        <section className="report-card rewrite-card">
-          <div className="card-title-row">
-            <div>
-              <p className="eyebrow">1:1 PARAGRAPH REWRITING</p>
-              <h2>감점 문단 비포 · 애프터 비교</h2>
-            </div>
-            <span className="ai-label"><Sparkles /> AI Rewrite</span>
-          </div>
-          <div className="rewrite-grid">
-            <div className="rewrite-column before">
-              <div className="column-label">
-                <span>학생 원문</span>
-                <b>감점 사유 하이라이트</b>
+        {/* 실제 채점 결과에서 유효한 첨삭(before/after)이 존재할 때만 비포·애프터 카드 노출 */}
+        {rewrite && (
+          <section className="report-card rewrite-card">
+            <div className="card-title-row">
+              <div>
+                <p className="eyebrow">1:1 PARAGRAPH REWRITING</p>
+                <h2>감점 문단 비포 · 애프터 비교</h2>
               </div>
-              <p>{rewrite.beforeText}</p>
-              <span className="reason">{rewrite.flawReason}</span>
+              <span className="ai-label"><Sparkles /> AI Rewrite</span>
             </div>
-            <div className="rewrite-arrow"><ArrowRight /></div>
-            <div className="rewrite-column after">
-              <div className="column-label">
-                <span>합격자 수준 개선 제안</span>
-                <b>AI Rewrite</b>
+            <div className="rewrite-grid">
+              <div className="rewrite-column before">
+                <div className="column-label">
+                  <span>학생 원문</span>
+                  <b>감점 사유 하이라이트</b>
+                </div>
+                <p>{rewrite.beforeText}</p>
+                <span className="reason">{rewrite.flawReason}</span>
               </div>
-              <p>{rewrite.afterText}</p>
-              <div className="why-list">
-                <span><Check /> 출제 의도에 완벽 부합하도록 쟁점 대립 명료화</span>
-                <span><Check /> 규정 어휘 및 자기 언어로 패러프레이징 완성</span>
+              <div className="rewrite-arrow"><ArrowRight /></div>
+              <div className="rewrite-column after">
+                <div className="column-label">
+                  <span>합격자 수준 개선 제안</span>
+                  <b>AI Rewrite</b>
+                </div>
+                <p>{rewrite.afterText}</p>
+                <div className="why-list">
+                  <span><Check /> 출제 의도에 완벽 부합하도록 쟁점 대립 명료화</span>
+                  <span><Check /> 규정 어휘 및 자기 언어로 패러프레이징 완성</span>
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
       </div>
 
       <footer className="report-actionbar">

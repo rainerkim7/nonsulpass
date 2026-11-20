@@ -71,13 +71,14 @@ function AdminConsoleContent() {
   const [deletePasswordError, setDeletePasswordError] = useState<string | null>(null)
   const [isDeletingUniv, setIsDeletingUniv] = useState<boolean>(false)
 
-  // AI 채점 및 패스 운영 정책(쿨다운 분 · 문항당 최대 응시횟수 · 유효기간 일 · 기본 제공 횟수 · 정밀 채점 AI 모델) 설정 모달 상태
+  // AI 채점 및 패스 운영 정책(쿨다운 분 · 문항당 최대 응시횟수 · 유효기간 일 · 기본 제공 횟수 · 정밀 채점 AI 모델 · 회원가입 허용 여부) 설정 모달 상태
   const [isPolicyModalOpen, setIsPolicyModalOpen] = useState<boolean>(false)
   const [cooldownMinutes, setCooldownMinutes] = useState<number>(3)
   const [maxAttempts, setMaxAttempts] = useState<number>(5)
   const [periodDays, setPeriodDays] = useState<number>(365)
   const [baseCredits, setBaseCredits] = useState<number>(60)
   const [gradingModel, setGradingModel] = useState<string>('gemini-3.1-pro-preview')
+  const [allowSignup, setAllowSignup] = useState<boolean>(false)
   const [isSavingPolicy, setIsSavingPolicy] = useState<boolean>(false)
 
   // 1. 현재 선택된 대학 상태: URL 파라미터(?univ=...) -> localStorage -> 'hongik' 순으로 우선 복원
@@ -122,6 +123,7 @@ function AdminConsoleContent() {
         if (data.policy.gradingModel) {
           setGradingModel(String(data.policy.gradingModel))
         }
+        setAllowSignup(Boolean(data.policy.allowSignup))
       }
     } catch (err) {
       console.warn('[AdminPage] 채점 정책 조회 실패:', err)
@@ -378,6 +380,7 @@ function AdminConsoleContent() {
           periodDays: Number(periodDays) || 0,
           baseCredits: Number(baseCredits) || 60,
           gradingModel: gradingModel || 'gemini-3.1-pro-preview',
+          allowSignup,
         }),
       })
       const data = await res.json()
@@ -392,10 +395,13 @@ function AdminConsoleContent() {
       if (data.policy.gradingModel) {
         setGradingModel(data.policy.gradingModel)
       }
+      setAllowSignup(Boolean(data.policy.allowSignup))
       setIsPolicyModalOpen(false)
       showNotice(
         'success',
-        `AI 채점 및 패스 정책이 저장되었습니다! (채점 모델: ${data.policy.gradingModel} / 쿨다운: ${
+        `AI 채점 및 패스 정책이 저장되었습니다! (회원가입: ${
+          data.policy.allowSignup ? '허용' : '일시 중단'
+        } / 채점 모델: ${data.policy.gradingModel} / 쿨다운: ${
           data.policy.cooldownMinutes === 0 ? '제한 없음' : `${data.policy.cooldownMinutes}분`
         } / 문항당 한도: ${
           data.policy.maxAttempts === 0 ? '무제한' : `${data.policy.maxAttempts}회`
@@ -1552,6 +1558,78 @@ function AdminConsoleContent() {
                       </button>
                     ))}
                   </div>
+                </div>
+              </div>
+
+              {/* 신규 회원가입 허용 / 일시 중단 제어 (개발 테스트 기간 외부 가입 차단용) */}
+              <div
+                style={{
+                  background: allowSignup ? '#f0fdf4' : '#fffbeb',
+                  border: `1px solid ${allowSignup ? '#bbf7d0' : '#fde68a'}`,
+                  borderRadius: '12px',
+                  padding: '14px 16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                  <div>
+                    <strong style={{ fontSize: '13.5px', color: '#0f172a', display: 'block' }}>
+                      신규 회원가입 허용 제어 (베타 테스트 관리)
+                    </strong>
+                    <span style={{ fontSize: '12px', color: '#475569' }}>
+                      개발 테스트 중 외부인의 신규 가입을 일시 중단하고, 테스트 완료 후 원클릭으로 오픈할 수 있습니다. (기존 계정 로그인은 항상 가능)
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '11.5px',
+                      fontWeight: 800,
+                      padding: '4px 10px',
+                      borderRadius: '9999px',
+                      backgroundColor: allowSignup ? '#dcfce7' : '#fef3c7',
+                      color: allowSignup ? '#15803d' : '#b45309',
+                    }}
+                  >
+                    {allowSignup ? '현재: 회원가입 허용' : '현재: 회원가입 일시 중단'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setAllowSignup(false)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12.5px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: !allowSignup ? '1.5px solid #d97706' : '1px solid #cbd5e1',
+                      background: !allowSignup ? '#d97706' : '#ffffff',
+                      color: !allowSignup ? '#ffffff' : '#475569',
+                    }}
+                  >
+                    🔒 회원가입 일시 중단 (테스트 중)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAllowSignup(true)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12.5px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      border: allowSignup ? '1.5px solid #16a34a' : '1px solid #cbd5e1',
+                      background: allowSignup ? '#16a34a' : '#ffffff',
+                      color: allowSignup ? '#ffffff' : '#475569',
+                    }}
+                  >
+                    ✅ 회원가입 허용 (정식 오픈)
+                  </button>
                 </div>
               </div>
 

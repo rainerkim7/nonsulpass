@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context'
 import { HIGH_SCHOOL_REGIONS } from '@/lib/constants/regions'
 
 export default function AuthModal() {
-  const { isAuthModalOpen, authModalMode, closeAuthModal, openAuthModal, login, signup } = useAuth()
+  const { isAuthModalOpen, authModalMode, allowSignup, closeAuthModal, openAuthModal, login, signup } = useAuth()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -218,7 +218,61 @@ export default function AuthModal() {
           </button>
         </div>
 
-        {/* 폼 본문 */}
+        {/* 폼 본문: 회원가입 차단(베타 테스트 중) 상태에서는 입력 폼 대신 정식 오픈 안내 표시 */}
+        {isSignup && !allowSignup ? (
+          <div style={{ padding: '28px 24px 26px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+            <div
+              style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '14px',
+                backgroundColor: '#fef3c7',
+                border: '1px solid #fde68a',
+                color: '#d97706',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Lock size={22} />
+            </div>
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>
+              신규 회원가입 일시 중단 안내
+            </h3>
+            <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.65, color: '#475569' }}>
+              <strong>논술패스(nonsulpass.com)</strong>는 현재 서비스 개발 및 품질 테스트 기간으로,
+              외부 신규 회원가입을 일시적으로 제한하고 있습니다.
+              <br />
+              테스트 완료 후 정식 오픈 시 바로 가입하실 수 있습니다.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                openAuthModal('login')
+                setErrorMessage(null)
+              }}
+              style={{
+                marginTop: '6px',
+                width: '100%',
+                padding: '11px',
+                borderRadius: '10px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                color: '#ffffff',
+                fontSize: '13.5px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+              }}
+            >
+              <span>기존 계정으로 로그인하기</span>
+              <ArrowRight size={15} />
+            </button>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} style={{ padding: '20px 24px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {errorMessage && (
             <div
@@ -435,6 +489,7 @@ export default function AuthModal() {
             {!isLoading && <ArrowRight size={15} />}
           </button>
         </form>
+        )}
 
         {/* 하단 보조 안내 */}
         <div
@@ -458,7 +513,7 @@ export default function AuthModal() {
                 로그인하기
               </button>
             </span>
-          ) : (
+          ) : allowSignup ? (
             <span>
               아직 계정이 없으신가요?{' '}
               <button
@@ -468,6 +523,10 @@ export default function AuthModal() {
               >
                 30초 만에 회원가입
               </button>
+            </span>
+          ) : (
+            <span style={{ color: '#94a3b8' }}>
+              현재 개발 테스트 기간으로 신규 회원가입이 일시 제한되어 있습니다.
             </span>
           )}
         </div>

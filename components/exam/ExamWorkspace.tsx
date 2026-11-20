@@ -652,13 +652,11 @@ export default function ExamWorkspace({
     triggerAdminNotice('success', '문제지 원본 PDF가 성공적으로 삭제되었습니다.')
   }
 
-  // Gemini AI 정밀 채점 로딩 및 20초 지연 감지 상태
+  // Gemini AI 정밀 채점 로딩 및 중단 컨트롤러 상태
   const [isGrading, setIsGrading] = useState(false)
   const [gradingStep, setGradingStep] = useState(1)
-  const [isGradingDelayed, setIsGradingDelayed] = useState(false)
   const [gradingNotice, setGradingNotice] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
-  const delayTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // 1. 초기 렌더링: 로컬 프리셋으로 즉시 렌더링 (블랭크 화면 방지)
   const [questionsData, setQuestionsData] = useState<QuestionsMap>(() => getQuestionsData(selectedExamId))
@@ -885,23 +883,13 @@ export default function ExamWorkspace({
     }
   }
 
-  // 사용자가 채점을 취소하고 답안으로 돌아가기를 눌렀을 때의 핸들러
+  // 사용자가 채점 진행 팝업에서 '중단하기'를 클릭했을 때 API 요청을 중단하고 진행창을 닫는 핸들러
   const handleCancelGrading = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
     }
-    if (delayTimerRef.current) {
-      clearTimeout(delayTimerRef.current)
-      delayTimerRef.current = null
-    }
     setIsGrading(false)
-    setIsGradingDelayed(false)
-  }
-
-  // 사용자가 계속 기다리기를 눌렀을 때 안내 박스를 숨기고 대기 유지
-  const handleKeepWaiting = () => {
-    setIsGradingDelayed(false)
   }
 
   // 🔍 관리자 전용 커스텀 프롬프트 기반 즉시 채점 핸들러
@@ -914,8 +902,11 @@ export default function ExamWorkspace({
 
     setIsGrading(true)
     setGradingStep(1)
-    setIsGradingDelayed(false)
     setShowPromptInspector(false)
+
+    // 관리자 커스텀 채점에서도 '중단하기' 버튼으로 API 요청을 즉시 취소할 수 있도록 연결
+    const controller = new AbortController()
+    abortControllerRef.current = controller
 
     const t1 = setTimeout(() => setGradingStep(2), 2200)
     const t2 = setTimeout(() => setGradingStep(3), 4800)
@@ -924,6 +915,7 @@ export default function ExamWorkspace({
       const res = await fetch('/api/grade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           university: currentUniv,
           examTitle: currentQ.tag || `${currentUniv} 수시 논술`,
@@ -992,11 +984,16 @@ export default function ExamWorkspace({
 
       onReport(reportData, activeQuestion as 'q1' | 'q2')
     } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log('커스텀 프롬프트 채점이 사용자에 의해 중단되었습니다.')
+        return
+      }
       console.warn('커스텀 프롬프트 채점 오류:', err)
       alert(`커스텀 프롬프트 채점 오류: ${err.message}`)
     } finally {
       clearTimeout(t1)
       clearTimeout(t2)
+      abortControllerRef.current = null
       setIsGrading(false)
     }
   }
@@ -1046,14 +1043,8 @@ export default function ExamWorkspace({
 
     setIsGrading(true)
     setGradingStep(1)
-    setIsGradingDelayed(false)
 
-    // 20초 이상 응답 지연 시 계속 기다리기/취소 선택 옵션 활성화
-    if (delayTimerRef.current) clearTimeout(delayTimerRef.current)
-    delayTimerRef.current = setTimeout(() => {
-      setIsGradingDelayed(true)
-    }, 20000)
-
+    // 사용자가 '중단하기'를 클릭할 때만 요청을 중단하도록 AbortController 연결 (지연 시 자동 중단 없음)
     const controller = new AbortController()
     abortControllerRef.current = controller
 
@@ -1149,13 +1140,8 @@ export default function ExamWorkspace({
     } finally {
       clearTimeout(t1)
       clearTimeout(t2)
-      if (delayTimerRef.current) {
-        clearTimeout(delayTimerRef.current)
-        delayTimerRef.current = null
-      }
       abortControllerRef.current = null
       setIsGrading(false)
-      setIsGradingDelayed(false)
     }
   }
 
@@ -1855,8 +1841,6 @@ export default function ExamWorkspace({
       <GradingLoadingOverlay
         isGrading={isGrading}
         gradingStep={gradingStep}
-        isGradingDelayed={isGradingDelayed}
-        onKeepWaiting={handleKeepWaiting}
         onCancelGrading={handleCancelGrading}
       />
 

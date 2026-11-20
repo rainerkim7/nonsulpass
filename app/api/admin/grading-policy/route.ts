@@ -17,6 +17,7 @@ export const DEFAULT_MAX_ATTEMPTS = 5
 export const DEFAULT_PERIOD_DAYS = 365 // 기본 패스 유효기간 365일
 export const DEFAULT_BASE_CREDITS = 60 // 기본 패스 제공 채점 횟수 60회
 export const DEFAULT_GRADING_MODEL = 'gemini-3.1-pro-preview' // 기본 정밀 채점 AI 모델
+export const DEFAULT_ALLOW_SIGNUP = false // 기본 신규 회원가입 허용 여부 (개발 테스트 기간 기본 차단)
 
 /**
  * 1. 현재 설정된 AI 채점 및 패스 운영 정책 조회 (GET)
@@ -38,6 +39,7 @@ export async function GET() {
           periodDays: DEFAULT_PERIOD_DAYS,
           baseCredits: DEFAULT_BASE_CREDITS,
           gradingModel: DEFAULT_GRADING_MODEL,
+          allowSignup: DEFAULT_ALLOW_SIGNUP,
         },
       })
     }
@@ -45,10 +47,11 @@ export async function GET() {
     const parsedCooldown = Number(data.exam_duration)
     const parsedMaxAttempts = Number(data.total_questions)
 
-    // char_per_question 필드에 JSON 형식으로 확장 정책(periodDays, baseCredits, gradingModel)이 저장되어 있는지 파싱
+    // char_per_question 필드에 JSON 형식으로 확장 정책(periodDays, baseCredits, gradingModel, allowSignup)이 저장되어 있는지 파싱
     let periodDays = DEFAULT_PERIOD_DAYS
     let baseCredits = DEFAULT_BASE_CREDITS
     let gradingModel = DEFAULT_GRADING_MODEL
+    let allowSignup = DEFAULT_ALLOW_SIGNUP
 
     if (data.char_per_question) {
       try {
@@ -61,6 +64,9 @@ export async function GET() {
         }
         if (typeof extraConfig.gradingModel === 'string' && extraConfig.gradingModel.trim()) {
           gradingModel = extraConfig.gradingModel.trim()
+        }
+        if (typeof extraConfig.allowSignup === 'boolean') {
+          allowSignup = extraConfig.allowSignup
         }
       } catch {
         // 기존 문자열 형식인 경우 기본값 유지
@@ -81,6 +87,7 @@ export async function GET() {
         periodDays,
         baseCredits,
         gradingModel,
+        allowSignup,
       },
     })
   } catch (err: any) {
@@ -93,6 +100,7 @@ export async function GET() {
         periodDays: DEFAULT_PERIOD_DAYS,
         baseCredits: DEFAULT_BASE_CREDITS,
         gradingModel: DEFAULT_GRADING_MODEL,
+        allowSignup: DEFAULT_ALLOW_SIGNUP,
       },
     })
   }
@@ -116,6 +124,7 @@ export async function POST(req: Request) {
     const rawGradingModel = typeof body.gradingModel === 'string' && body.gradingModel.trim()
       ? body.gradingModel.trim()
       : DEFAULT_GRADING_MODEL
+    const allowSignup = typeof body.allowSignup === 'boolean' ? body.allowSignup : DEFAULT_ALLOW_SIGNUP
 
     if (Number.isNaN(rawCooldown) || rawCooldown < 0 || rawCooldown > 1440) {
       return NextResponse.json(
@@ -158,6 +167,7 @@ export async function POST(req: Request) {
       periodDays,
       baseCredits,
       gradingModel,
+      allowSignup,
       updatedAt: new Date().toISOString(),
     })
 
@@ -187,6 +197,7 @@ export async function POST(req: Request) {
         periodDays,
         baseCredits,
         gradingModel,
+        allowSignup,
       },
     })
   } catch (err: any) {

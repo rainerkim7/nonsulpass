@@ -23,6 +23,8 @@ export interface UnifiedAiCallOptions {
   maxOutputTokens?: number
   /** JSON 응답 강제 여부 (기본값: true) */
   jsonMode?: boolean
+  /** 클라이언트 요청 중단 시 하위 AI 호출 및 타 제공사 폴백을 즉시 차단하기 위한 AbortSignal */
+  signal?: AbortSignal
 }
 
 export interface UnifiedAiCallResult {
@@ -46,8 +48,13 @@ export async function callUnifiedAi(options: UnifiedAiCallOptions): Promise<Unif
         temperature: options.temperature ?? 0.2,
         maxTokens: options.maxOutputTokens ?? 16384,
         jsonMode: options.jsonMode !== false,
+        signal: options.signal,
       })
     } catch (openAiErr: any) {
+      // 사용자가 중단한 경우 타 제공사(Gemini)로의 불필요한 폴백 과금을 즉시 차단
+      if (options.signal?.aborted || openAiErr?.name === 'AbortError') {
+        throw openAiErr
+      }
       console.warn('[UnifiedAI] OpenAI 호출 실패, Gemini 라인업으로 비상 폴백 시도:', openAiErr.message)
       // OpenAI 실패 시 Gemini 최상위 Pro 모델로 긴급 폴백
       const geminiPrompt = options.systemPrompt
@@ -60,6 +67,7 @@ export async function callUnifiedAi(options: UnifiedAiCallOptions): Promise<Unif
         maxOutputTokens: options.maxOutputTokens ?? 16384,
         responseMimeType: options.jsonMode !== false ? 'application/json' : 'text/plain',
         models: PAID_PRO_GEMINI_MODELS,
+        signal: options.signal,
       })
 
       return {
@@ -83,6 +91,7 @@ export async function callUnifiedAi(options: UnifiedAiCallOptions): Promise<Unif
       maxOutputTokens: options.maxOutputTokens ?? 16384,
       responseMimeType: options.jsonMode !== false ? 'application/json' : 'text/plain',
       models: requestedModels,
+      signal: options.signal,
     })
 
     return {
@@ -90,6 +99,10 @@ export async function callUnifiedAi(options: UnifiedAiCallOptions): Promise<Unif
       modelUsed: geminiResult.modelUsed,
     }
   } catch (geminiErr: any) {
+    // 사용자가 중단한 경우 타 제공사(OpenAI)로의 불필요한 폴백 과금을 즉시 차단
+    if (options.signal?.aborted || geminiErr?.name === 'AbortError') {
+      throw geminiErr
+    }
     console.warn('[UnifiedAI] Gemini 호출 실패, OpenAI ChatGPT 라인업으로 비상 폴백 시도:', geminiErr.message)
     // Gemini 실패 시 OpenAI 6.1 Sol로 비상 폴백
     return await callOpenAiWithFallback({
@@ -100,6 +113,7 @@ export async function callUnifiedAi(options: UnifiedAiCallOptions): Promise<Unif
       maxTokens: options.maxOutputTokens ?? 16384,
       jsonMode: options.jsonMode !== false,
       fallbackModels: OPENAI_CHATGPT_MODELS,
+      signal: options.signal,
     })
   }
 }

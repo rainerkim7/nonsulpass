@@ -68,6 +68,7 @@ export interface AuthContextType {
   // 인증 모달 제어
   isAuthModalOpen: boolean
   authModalMode: 'login' | 'signup'
+  allowSignup: boolean
   openAuthModal: (mode?: 'login' | 'signup') => void
   closeAuthModal: () => void
   // 개인정보 수정 모달 제어
@@ -93,6 +94,7 @@ const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
   isAuthModalOpen: false,
   authModalMode: 'login',
+  allowSignup: false,
   openAuthModal: () => {},
   closeAuthModal: () => {},
   isProfileModalOpen: false,
@@ -108,11 +110,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(true)
 
-  // 로그인 / 회원가입 전역 팝업 모달 상태
+  // 로그인 / 회원가입 전역 팝업 모달 상태 및 회원가입 허용 정책 상태
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false)
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login')
+  const [allowSignup, setAllowSignup] = useState<boolean>(false)
   // 개인정보 수정 모달 상태
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false)
+
+  // 관리자 운영 정책에서 신규 회원가입 허용 여부(allowSignup) 실시간 조회
+  const fetchSignupPolicy = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/admin/grading-policy', { cache: 'no-store' })
+      const data = await res.json()
+      const allowed = Boolean(data?.policy?.allowSignup)
+      setAllowSignup(allowed)
+      return allowed
+    } catch {
+      return false
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchSignupPolicy()
+  }, [fetchSignupPolicy])
 
   // Supabase profiles 테이블에서 사용자 세부 프로필(이름, 역할 등) 조회
   const fetchProfile = useCallback(async (userId: string, userEmail: string, metaName?: string) => {
@@ -225,7 +245,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // 2. 이메일 / 비밀번호 회원가입
+  // 2. 이메일 / 비밀번호 회원가입 (관리자 정책상 회원가입 중단 상태일 경우 원천 차단)
   const signup = async (
     email: string,
     password: string,
@@ -233,6 +253,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     highSchoolRegion?: string
   ): Promise<{ error: string | null }> => {
     try {
+      // 실행 직전 최신 정책 재확인하여 차단 상태에서의 우회 가입 방지
+      const isAllowed = await fetchSignupPolicy()
+      if (!isAllowed) {
+        return { error: '현재 개발 테스트 기간으로 신규 회원가입이 일시 중단되어 있습니다.' }
+      }
+
       const cleanEmail = email.trim()
       const cleanName = name.trim() || '수험생'
       const cleanRegion = highSchoolRegion || '서울특별시'
@@ -395,6 +421,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const openAuthModal = (mode: 'login' | 'signup' = 'login') => {
     setAuthModalMode(mode)
     setIsAuthModalOpen(true)
+    // 모달 오픈 시 최신 회원가입 허용 정책 동기화
+    fetchSignupPolicy()
   }
 
   const closeAuthModal = () => {
@@ -435,6 +463,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         isAuthModalOpen,
         authModalMode,
+        allowSignup,
         openAuthModal,
         closeAuthModal,
         isProfileModalOpen,

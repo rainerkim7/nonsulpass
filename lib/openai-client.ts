@@ -23,6 +23,8 @@ export interface OpenAiCallOptions {
   model?: string
   /** 폴백 모델 목록 */
   fallbackModels?: string[]
+  /** 클라이언트 요청 중단 시 하위 OpenAI API 호출 및 폴백을 즉시 취소하기 위한 AbortSignal */
+  signal?: AbortSignal
 }
 
 export interface OpenAiCallResult {
@@ -58,6 +60,13 @@ export async function callOpenAiWithFallback(options: OpenAiCallOptions): Promis
 
   for (const model of candidateModels) {
     for (let attempt = 1; attempt <= 2; attempt++) {
+      // 이미 중단된 요청이면 추가 모델 호출/재시도를 즉시 차단
+      if (options.signal?.aborted) {
+        const abortErr = new Error('요청이 사용자에 의해 중단되었습니다.')
+        abortErr.name = 'AbortError'
+        throw abortErr
+      }
+
       try {
         const payload: Record<string, any> = {
           model,
@@ -82,6 +91,7 @@ export async function callOpenAiWithFallback(options: OpenAiCallOptions): Promis
             'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
           },
+          signal: options.signal,
           body: JSON.stringify(payload),
         })
 
@@ -111,6 +121,10 @@ export async function callOpenAiWithFallback(options: OpenAiCallOptions): Promis
           modelUsed: model,
         }
       } catch (err: any) {
+        // 사용자 중단(AbortError)은 재시도·폴백하지 않고 즉시 상위로 전파
+        if (options.signal?.aborted || err?.name === 'AbortError') {
+          throw err
+        }
         lastError = err
         console.warn(`[OpenAI ${model}] 시도 ${attempt} 실패:`, err.message)
         if (attempt === 1) {

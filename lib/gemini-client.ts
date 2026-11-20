@@ -22,6 +22,8 @@ export interface GeminiCallOptions {
   maxAttemptsPerModel?: number
   /** 재시도 대기 시간 (ms, 기본값: 800ms) */
   retryDelayMs?: number
+  /** 클라이언트 요청 중단 시 하위 Gemini API 호출 및 폴백을 즉시 취소하기 위한 AbortSignal */
+  signal?: AbortSignal
 }
 
 export interface GeminiCallResult {
@@ -84,9 +86,21 @@ export async function callGeminiWithFallback(
 
   for (const model of models) {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // 이미 중단된 요청이면 추가 모델 호출/재시도를 즉시 차단
+      if (options.signal?.aborted) {
+        const abortErr = new Error('요청이 사용자에 의해 중단되었습니다.')
+        abortErr.name = 'AbortError'
+        throw abortErr
+      }
+
       try {
         if (attempt > 0) {
           await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+          if (options.signal?.aborted) {
+            const abortErr = new Error('요청이 사용자에 의해 중단되었습니다.')
+            abortErr.name = 'AbortError'
+            throw abortErr
+          }
         }
 
         const geminiRes = await fetch(
@@ -94,6 +108,7 @@ export async function callGeminiWithFallback(
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: options.signal,
             body: JSON.stringify({
               contents: [{ role: 'user', parts: options.parts }],
               generationConfig,
@@ -127,7 +142,11 @@ export async function callGeminiWithFallback(
             modelUsed: model,
           }
         }
-      } catch (err) {
+      } catch (err: any) {
+        // 사용자 중단(AbortError)은 재시도·폴백하지 않고 즉시 상위로 전파
+        if (options.signal?.aborted || err?.name === 'AbortError') {
+          throw err
+        }
         lastError = err
         if (attempt < maxAttempts - 1) {
           continue

@@ -9,7 +9,7 @@
  */
 
 import React from 'react'
-import { X, Copy, Sparkles, Clock3 } from 'lucide-react'
+import { X, Copy, Sparkles } from 'lucide-react'
 import type { QuestionData } from '@/lib/exam-helper'
 import { renderFormattedParagraph } from './PassageContentRenderer'
 
@@ -216,19 +216,15 @@ export function RubricModal({ isOpen, onClose, currentUniv, currentQ }: RubricMo
 interface GradingLoadingOverlayProps {
   isGrading: boolean
   gradingStep: number
-  isGradingDelayed: boolean
-  onKeepWaiting: () => void
   onCancelGrading: () => void
 }
 
 /**
- * AI 채점 진행 및 20초 이상 지연 시 안내 오버레이
+ * AI 채점 진행 오버레이 (사용자 사정 또는 지연 시 직접 중단할 수 있는 중단하기 버튼 상시 제공)
  */
 export function GradingLoadingOverlay({
   isGrading,
   gradingStep,
-  isGradingDelayed,
-  onKeepWaiting,
   onCancelGrading,
 }: GradingLoadingOverlayProps) {
   if (!isGrading) return null
@@ -259,26 +255,24 @@ export function GradingLoadingOverlay({
           </div>
         </div>
 
-        {/* 20초 이상 응답 지연 시 계속 기다리기 / 취소 선택 옵션 */}
-        {isGradingDelayed && (
-          <div className="grading-delay-box">
-            <div className="grading-delay-header">
-              <Clock3 className="grading-delay-icon" />
-              <span>분석량이 많아 심층 채점이 진행 중입니다</span>
-            </div>
-            <p className="grading-delay-desc">
-              공식 채점 기준 대조 및 1:1 맞춤 첨삭문 생성에 시간이 조금 더 소요되고 있습니다. 계속 기다리시거나 취소 후 답안으로 돌아가실 수 있습니다.
-            </p>
-            <div className="grading-delay-actions">
-              <button type="button" className="grading-btn-wait" onClick={onKeepWaiting}>
-                계속 기다리기
-              </button>
-              <button type="button" className="grading-btn-cancel" onClick={onCancelGrading}>
-                취소하고 답안으로 돌아가기
-              </button>
-            </div>
-          </div>
-        )}
+        {/* 필요 시 의도적으로만 클릭하도록 우측 하단에 작게 배치한 중단하기 버튼 */}
+        <div style={{ marginTop: '18px', display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            className="grading-btn-cancel"
+            onClick={onCancelGrading}
+            style={{
+              padding: '5px 11px',
+              fontSize: '11.5px',
+              fontWeight: 600,
+              borderRadius: '6px',
+              color: '#64748b',
+              borderColor: '#e2e8f0',
+            }}
+          >
+            중단하기
+          </button>
+        </div>
       </div>
     </div>
   )

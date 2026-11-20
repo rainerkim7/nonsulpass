@@ -15,6 +15,7 @@ export async function POST(req: Request) {
       univName = '경희대학교',
       targetFaculty = '',
       documentText = '',
+      customInstruction = '',
       selectedTabs = { tab1: true, tab2: true, tab3: true },
       model = 'gemini-3.1-pro-preview',
     } = body
@@ -32,6 +33,12 @@ export async function POST(req: Request) {
 
     const facultySection = targetFaculty
       ? `\n[선택된 목표 계열/트랙]: ${targetFaculty}\n※ 반드시 위 계열("${targetFaculty}")에 해당하는 문항, 수리논술 유무, 제시문, 배점 및 채점 기준을 최우선으로 정확히 추출하십시오.\n`
+      : ''
+
+    // 관리자가 입력한 추가 지시사항(예: 자연계열 제외, 특정 회차만 추출 등)을 최우선 규칙으로 주입
+    const cleanCustomInstruction = typeof customInstruction === 'string' ? customInstruction.trim() : ''
+    const customInstructionSection = cleanCustomInstruction
+      ? `\n[🚨 관리자 최우선 특별 지시사항 (반드시 최우선 준수)]:\n${cleanCustomInstruction}\n※ 위 관리자 특별 지시사항은 다른 일반 추출 규칙보다 최우선으로 적용하며, 제외하도록 지시된 계열·회차·문항은 출력 JSON에 절대 포함하지 마십시오.\n`
       : ''
 
     // 선택된 탭별 프롬프트 가이드 동적 조합
@@ -118,7 +125,7 @@ ${tabInstructions.join('\n\n')}
 }
 `
 
-    const userPrompt = `[대상 대학명]: ${univName} (대학 ID: ${univId})${facultySection}
+    const userPrompt = `[대상 대학명]: ${univName} (대학 ID: ${univId})${facultySection}${customInstructionSection}
 [선택된 추출 대상 탭]: ${[
       shouldParseTab1 ? '탭 1(기출문제)' : null,
       shouldParseTab2 ? '탭 2(출제경향)' : null,

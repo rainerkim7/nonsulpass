@@ -153,6 +153,7 @@ ${modelAnswer || '제시문과 발문의 논리적 일치 여부로 판단'}
     }
 
     // 관리자 지정 모델(Gemini 또는 ChatGPT 6.1 Sol / Terra)을 통합 AI 게이트웨이로 호출
+    // * req.signal 전달: 사용자가 '중단하기'를 클릭하면 하위 AI API 호출 및 폴백 재시도까지 즉시 차단
     const { text: rawResponseText, modelUsed } = await callUnifiedAi({
       model: configuredModel,
       systemPrompt: finalSystemPrompt,
@@ -160,6 +161,7 @@ ${modelAnswer || '제시문과 발문의 논리적 일치 여부로 판단'}
       temperature: 0.2,
       maxOutputTokens: 16384,
       jsonMode: true,
+      signal: req.signal,
     })
 
     // 마크다운 백틱 등이 포함되어 있을 경우 정제
@@ -177,6 +179,14 @@ ${modelAnswer || '제시문과 발문의 논리적 일치 여부로 판단'}
     }
     return NextResponse.json(reportData)
   } catch (error: any) {
+    // 클라이언트 중단(중단하기 버튼 클릭) 시 500 에러 로그 대신 정상 취소(499)로 처리
+    if (req.signal?.aborted || error?.name === 'AbortError') {
+      console.log('[GradeAPI] 클라이언트 요청 중단 감지: AI 호출 및 폴백을 즉시 종료했습니다.')
+      return NextResponse.json(
+        { error: '채점 요청이 사용자에 의해 중단되었습니다.' },
+        { status: 499 }
+      )
+    }
     console.error('논술 AI 채점 에러:', error)
     return NextResponse.json(
       { error: error?.message || '논술 채점 분석 중 오류가 발생했습니다.' },
